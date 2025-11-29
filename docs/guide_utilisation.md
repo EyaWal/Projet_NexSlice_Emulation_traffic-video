@@ -2,7 +2,7 @@
 
 ## 🎯 Vue d'Ensemble
 
-Ce guide vous explique comment utiliser les 4 scripts de test fournis pour valider votre infrastructure 5G et collecter des métriques de performance.
+Ce guide vous explique comment utiliser les 4 scripts de test fournis pour valider votre infrastructure 5G et collecter des métriques de performance avec **monitoring en temps réel via Prometheus et Grafana**.
 
 ---
 
@@ -51,6 +51,8 @@ ip link show uesimtun0
 sudo apt update
 sudo apt install -y iputils-ping curl tcpdump iperf3 jq bc
 ```
+
+4. **Prometheus et Grafana sont déployés** (voir section [Monitoring](#-monitoring-avec-prometheus-et-grafana))
 
 ---
 
@@ -128,7 +130,7 @@ kubectl logs -n nexslice <upf-pod-name>
 ## 🎥 Script 2: test-video-streaming.sh
 
 ### Description
-Teste le streaming vidéo via le tunnel 5G avec métriques détaillées.
+Teste le streaming vidéo via le tunnel 5G avec métriques détaillées et export vers Prometheus.
 
 ### Utilisation
 ```bash
@@ -142,7 +144,7 @@ sudo ./test-video-streaming.sh
 1. ✅ Vérifie l'interface 5G
 2. ✅ Télécharge une vidéo (Big Buck Bunny, ~158 MB) via le tunnel
 3. ✅ Mesure le débit, temps de téléchargement
-4. ✅ Capture le trafic réseau (tcpdump)
+4. ✅ **Exporte les métriques vers Prometheus**
 5. ✅ Vérifie le routage via UPF
 
 ### Résultat Attendu
@@ -174,10 +176,9 @@ Temps écoulé: 45s
   Taille fichier: 151M
   Débit moyen: 27.96 Mbps
 
-[3/4] Capture réseau (optionnel)...
-Lancement capture tcpdump pendant 10s...
-✓ Capture terminée: 1234 paquets
-  Fichier: results/captures/capture_20251129_123456.pcap
+[3/4] Export des métriques vers Prometheus...
+✓ Métriques exportées
+  Endpoint: http://localhost:9091/metrics/job/nexslice_test
 
 [4/4] Vérification du routage via UPF...
   IP source (UE): 12.1.1.2
@@ -187,6 +188,7 @@ Lancement capture tcpdump pendant 10s...
 
 ================================================
 ✓ Test de streaming terminé avec succès
+✓ Consultez Grafana: http://localhost:3000
 ================================================
 ```
 
@@ -194,33 +196,7 @@ Lancement capture tcpdump pendant 10s...
 ```
 results/
 ├── video_20251129_123456.mp4           # Vidéo téléchargée
-├── curl_metrics_20251129_123456.txt    # Métriques curl
-└── captures/
-    └── capture_20251129_123456.pcap    # Capture réseau
-```
-
-### Analyse des Captures
-
-**Avec Wireshark (interface graphique)**:
-```bash
-wireshark results/captures/capture_*.pcap
-```
-
-Filtres utiles dans Wireshark:
-- `ip.src == 12.1.1.2` → Paquets envoyés par le UE
-- `http` → Trafic HTTP uniquement
-- `tcp` → Trafic TCP
-
-**Avec tcpdump (ligne de commande)**:
-```bash
-# Voir les 20 premiers paquets
-tcpdump -r results/captures/capture_*.pcap -nn | head -20
-
-# Filtrer par IP source
-tcpdump -r results/captures/capture_*.pcap -nn src 12.1.1.2
-
-# Statistiques
-tcpdump -r results/captures/capture_*.pcap -q | wc -l
+└── curl_metrics_20251129_123456.txt    # Métriques curl
 ```
 
 ---
@@ -228,7 +204,7 @@ tcpdump -r results/captures/capture_*.pcap -q | wc -l
 ## 📊 Script 3: measure-performance.sh
 
 ### Description
-Mesure détaillée de performance réseau (latence, jitter, débit).
+Mesure détaillée de performance réseau (latence, jitter, débit) avec export Prometheus.
 
 ### Utilisation
 ```bash
@@ -240,7 +216,8 @@ cd scripts/
 1. ✅ **Test 1**: Latence et jitter (100 pings)
 2. ✅ **Test 2**: Débit avec iperf3 (optionnel si serveur disponible)
 3. ✅ **Test 3**: Statistiques interface réseau
-4. ✅ Génère un rapport Markdown
+4. ✅ **Exporte toutes les métriques vers Prometheus**
+5. ✅ Génère un rapport Markdown
 
 ### Résultat Attendu
 ```
@@ -265,6 +242,7 @@ Résultats Latence:
   - Jitter (mdev): 0.789 ms
   - Perte:       0%
 ✓ Fichier sauvegardé: results/performance/ping_20251129_123456.json
+✓ Métriques exportées vers Prometheus
 
 ================================================
 [Test 2/3] Mesure Débit (iperf3)
@@ -288,11 +266,13 @@ Statistiques RX/TX:
     TX: bytes  packets  errors  dropped  carrier  collsns
     9876543    7890     0       0        0        0
 ✓ Fichier sauvegardé: results/performance/interface_stats_20251129_123456.txt
+✓ Métriques exportées vers Prometheus
 
 ================================================
   Génération du Rapport
 ================================================
 ✓ Rapport généré: results/performance/rapport_performance_20251129_123456.md
+✓ Dashboard Grafana mis à jour: http://localhost:3000/d/nexslice
 ```
 
 ### Fichiers Générés
@@ -304,76 +284,630 @@ results/performance/
 └── rapport_performance_20251129_123456.md # Rapport complet
 ```
 
-### Interpréter les Résultats
+---
 
-**Latence**:
-- ✅ Excellent: < 10 ms
-- ✅ Bon: 10-50 ms (adapté au streaming)
-- ⚠️ Acceptable: 50-100 ms
-- ❌ Problématique: > 100 ms
+## 📈 Monitoring avec Prometheus et Grafana
 
-**Jitter**:
-- ✅ Excellent: < 5 ms
-- ✅ Bon: 5-10 ms
-- ⚠️ À surveiller: > 10 ms
+### Installation et Configuration
 
-**Perte de paquets**:
-- ✅ Excellent: 0%
-- ✅ Acceptable: < 1%
-- ⚠️ Problématique: 1-5%
-- ❌ Critique: > 5%
+#### 1. Déployer Prometheus
+```bash
+# Créer le namespace monitoring
+kubectl create namespace monitoring
+
+# Créer la configuration Prometheus
+cat > monitoring/prometheus-config.yaml << 'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'nexslice'
+        replica: '1'
+
+    scrape_configs:
+      # Métriques des pods Kubernetes
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - nexslice
+                - monitoring
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+
+      # Métriques des scripts de test (Pushgateway)
+      - job_name: 'pushgateway'
+        honor_labels: true
+        static_configs:
+          - targets: ['pushgateway:9091']
+
+      # Node exporter pour métriques système
+      - job_name: 'node-exporter'
+        static_configs:
+          - targets: ['node-exporter:9100']
+            labels:
+              node: 'nexslice-node'
+
+      # Métriques réseau personnalisées
+      - job_name: 'nexslice-ue'
+        static_configs:
+          - targets: ['ue-exporter:9102']
+            labels:
+              slice_type: 'embb'
+              sst: '1'
+EOF
+
+kubectl apply -f monitoring/prometheus-config.yaml
+
+# Déployer Prometheus
+cat > monitoring/prometheus-deployment.yaml << 'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  type: NodePort
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30090
+  selector:
+    app: prometheus
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+      - name: prometheus
+        image: prom/prometheus:latest
+        args:
+          - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--storage.tsdb.path=/prometheus'
+          - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+          - '--web.console.templates=/usr/share/prometheus/consoles'
+          - '--storage.tsdb.retention.time=30d'
+          - '--web.enable-lifecycle'
+        ports:
+        - containerPort: 9090
+        volumeMounts:
+        - name: prometheus-config
+          mountPath: /etc/prometheus
+        - name: prometheus-storage
+          mountPath: /prometheus
+      volumes:
+      - name: prometheus-config
+        configMap:
+          name: prometheus-config
+      - name: prometheus-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - extensions
+  resources:
+  - ingresses
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: monitoring
+EOF
+
+kubectl apply -f monitoring/prometheus-deployment.yaml
+```
+
+#### 2. Déployer Pushgateway (pour les scripts)
+```bash
+cat > monitoring/pushgateway-deployment.yaml << 'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: pushgateway
+  namespace: monitoring
+spec:
+  type: NodePort
+  ports:
+    - port: 9091
+      targetPort: 9091
+      nodePort: 30091
+  selector:
+    app: pushgateway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pushgateway
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pushgateway
+  template:
+    metadata:
+      labels:
+        app: pushgateway
+    spec:
+      containers:
+      - name: pushgateway
+        image: prom/pushgateway:latest
+        ports:
+        - containerPort: 9091
+EOF
+
+kubectl apply -f monitoring/pushgateway-deployment.yaml
+```
+
+#### 3. Déployer Grafana
+```bash
+cat > monitoring/grafana-deployment.yaml << 'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  type: NodePort
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30300
+  selector:
+    app: grafana
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "admin"
+        - name: GF_INSTALL_PLUGINS
+          value: "grafana-piechart-panel"
+        volumeMounts:
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+        - name: grafana-datasources
+          mountPath: /etc/grafana/provisioning/datasources
+      volumes:
+      - name: grafana-storage
+        emptyDir: {}
+      - name: grafana-datasources
+        configMap:
+          name: grafana-datasources
+EOF
+
+kubectl apply -f monitoring/grafana-deployment.yaml
+```
+
+#### 4. Vérifier le déploiement
+```bash
+# Vérifier que tous les pods sont Running
+kubectl get pods -n monitoring
+
+# Devrait afficher:
+# NAME                           READY   STATUS    RESTARTS   AGE
+# prometheus-xxxxx              1/1     Running   0          2m
+# pushgateway-xxxxx             1/1     Running   0          2m
+# grafana-xxxxx                 1/1     Running   0          2m
+
+# Accéder aux interfaces
+echo "Prometheus: http://localhost:30090"
+echo "Pushgateway: http://localhost:30091"
+echo "Grafana: http://localhost:30300"
+```
+
+---
+
+### Modifier les Scripts pour Exporter vers Prometheus
+
+#### Script d'export des métriques
+
+Créez un fichier `scripts/export-to-prometheus.sh`:
+```bash
+#!/bin/bash
+
+PUSHGATEWAY_URL="http://localhost:30091"
+JOB_NAME="nexslice_test"
+
+# Fonction pour exporter des métriques
+export_metric() {
+    local metric_name=$1
+    local metric_value=$2
+    local labels=$3
+    
+    cat <<EOF | curl --data-binary @- ${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}${labels}
+# TYPE ${metric_name} gauge
+${metric_name} ${metric_value}
+EOF
+}
+
+# Exemple: exporter la latence
+export_metric "nexslice_latency_ms" "2.456" "/ue_ip/12.1.1.2/slice_type/embb"
+
+# Exemple: exporter le débit
+export_metric "nexslice_throughput_mbps" "27.96" "/ue_ip/12.1.1.2/slice_type/embb"
+
+# Exemple: exporter la perte de paquets
+export_metric "nexslice_packet_loss_percent" "0" "/ue_ip/12.1.1.2/slice_type/embb"
+```
+
+#### Modifier `measure-performance.sh`
+
+Ajoutez à la fin du script:
+```bash
+# Export vers Prometheus
+echo ""
+echo "================================================"
+echo "[Export] Envoi des métriques vers Prometheus"
+echo "================================================"
+
+PUSHGATEWAY_URL="http://localhost:30091"
+JOB_NAME="nexslice_performance"
+UE_IP=$(ip addr show uesimtun0 | grep "inet " | awk '{print $2}' | cut -d'/' -f1)
+
+# Exporter latence
+cat <<EOF | curl --silent --data-binary @- ${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}/ue_ip/${UE_IP}/slice_type/embb
+# TYPE nexslice_rtt_min_ms gauge
+nexslice_rtt_min_ms ${RTT_MIN}
+# TYPE nexslice_rtt_avg_ms gauge
+nexslice_rtt_avg_ms ${RTT_AVG}
+# TYPE nexslice_rtt_max_ms gauge
+nexslice_rtt_max_ms ${RTT_MAX}
+# TYPE nexslice_jitter_ms gauge
+nexslice_jitter_ms ${JITTER}
+# TYPE nexslice_packet_loss_percent gauge
+nexslice_packet_loss_percent ${PACKET_LOSS}
+EOF
+
+echo "✓ Métriques exportées vers Prometheus"
+echo "  Endpoint: ${PUSHGATEWAY_URL}/metrics"
+```
+
+---
+
+### Dashboards Grafana Recommandés
+
+#### Dashboard 1: Vue d'Ensemble NexSlice
+
+Créez un fichier `monitoring/grafana-dashboard-overview.json`:
+```json
+{
+  "dashboard": {
+    "title": "NexSlice - Vue d'Ensemble",
+    "panels": [
+      {
+        "title": "Latence Moyenne (ms)",
+        "targets": [
+          {
+            "expr": "nexslice_rtt_avg_ms{slice_type=\"embb\"}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Débit (Mbps)",
+        "targets": [
+          {
+            "expr": "nexslice_throughput_mbps{slice_type=\"embb\"}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Perte de Paquets (%)",
+        "targets": [
+          {
+            "expr": "nexslice_packet_loss_percent{slice_type=\"embb\"}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Jitter (ms)",
+        "targets": [
+          {
+            "expr": "nexslice_jitter_ms{slice_type=\"embb\"}"
+          }
+        ],
+        "type": "graph"
+      }
+    ]
+  }
+}
+```
+
+#### Dashboard 2: Comparaison Multi-Slices
+
+Pour comparer SST 1, 2, 3:
+```json
+{
+  "dashboard": {
+    "title": "NexSlice - Comparaison Slices",
+    "panels": [
+      {
+        "title": "Latence par Slice",
+        "targets": [
+          {
+            "expr": "nexslice_rtt_avg_ms",
+            "legendFormat": "SST {{sst}} - {{slice_type}}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Débit par Slice",
+        "targets": [
+          {
+            "expr": "nexslice_throughput_mbps",
+            "legendFormat": "SST {{sst}} - {{slice_type}}"
+          }
+        ],
+        "type": "graph"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### Importer les Dashboards dans Grafana
+```bash
+# 1. Accéder à Grafana
+open http://localhost:30300
+# Login: admin / admin
+
+# 2. Ajouter la source de données Prometheus
+# - Aller dans Configuration > Data Sources
+# - Add data source > Prometheus
+# - URL: http://prometheus:9090
+# - Save & Test
+
+# 3. Importer les dashboards
+# - Aller dans Create > Import
+# - Uploader le fichier JSON ou coller le contenu
+# - Sélectionner la source de données Prometheus
+# - Import
+```
+
+---
+
+### Requêtes Prometheus Utiles
+```promql
+# Latence moyenne sur les 5 dernières minutes
+avg_over_time(nexslice_rtt_avg_ms{ue_ip="12.1.1.2"}[5m])
+
+# Débit maximum
+max_over_time(nexslice_throughput_mbps{ue_ip="12.1.1.2"}[5m])
+
+# Perte de paquets totale
+sum(nexslice_packet_loss_percent{slice_type="embb"})
+
+# Comparaison latence entre slices
+nexslice_rtt_avg_ms{sst=~"1|2|3"}
+
+# Alertes si latence > 50ms
+nexslice_rtt_avg_ms > 50
+
+# Alertes si perte de paquets > 1%
+nexslice_packet_loss_percent > 1
+```
+
+---
+
+### Avantages par rapport à Wireshark/tcpdump
+
+| Critère | Wireshark/tcpdump | Prometheus + Grafana |
+|---------|-------------------|----------------------|
+| **Temps réel** | ❌ Post-mortem | ✅ Live monitoring |
+| **Historique** | ❌ Par capture | ✅ 30 jours (configurable) |
+| **Alertes** | ❌ Non | ✅ Oui (règles Prometheus) |
+| **Multi-UE** | ⚠️ Difficile | ✅ Facile (labels) |
+| **Dashboards** | ❌ Non | ✅ Oui (personnalisables) |
+| **Comparaison slices** | ⚠️ Manuel | ✅ Automatique |
+| **Analyse réseau** | ✅ Détaillée | ⚠️ Métriques agrégées |
+
+**Recommandation**: Utilisez Prometheus+Grafana pour le monitoring continu et les tests de performance. Gardez tcpdump pour le debug approfondi si nécessaire.
+
+---
+
+## 📊 Exploiter les Résultats avec Grafana
+
+### 1. Créer un Rapport Automatique
+```bash
+# Script pour générer un rapport depuis Prometheus
+cat > scripts/generate-report-from-prometheus.sh << 'EOF'
+#!/bin/bash
+
+PROMETHEUS_URL="http://localhost:30090"
+UE_IP="12.1.1.2"
+
+# Récupérer la latence moyenne
+RTT_AVG=$(curl -s "${PROMETHEUS_URL}/api/v1/query?query=nexslice_rtt_avg_ms{ue_ip=\"${UE_IP}\"}" | jq -r '.data.result[0].value[1]')
+
+# Récupérer le débit
+THROUGHPUT=$(curl -s "${PROMETHEUS_URL}/api/v1/query?query=nexslice_throughput_mbps{ue_ip=\"${UE_IP}\"}" | jq -r '.data.result[0].value[1]')
+
+# Récupérer la perte de paquets
+PACKET_LOSS=$(curl -s "${PROMETHEUS_URL}/api/v1/query?query=nexslice_packet_loss_percent{ue_ip=\"${UE_IP}\"}" | jq -r '.data.result[0].value[1]')
+
+# Générer le tableau
+echo "| Métrique | Valeur |"
+echo "|----------|--------|"
+echo "| Latence moyenne | ${RTT_AVG} ms |"
+echo "| Débit moyen | ${THROUGHPUT} Mbps |"
+echo "| Perte de paquets | ${PACKET_LOSS}% |"
+EOF
+
+chmod +x scripts/generate-report-from-prometheus.sh
+./scripts/generate-report-from-prometheus.sh
+```
+
+### 2. Exporter un Dashboard en PDF
+```bash
+# Installer grafana-reporter
+kubectl apply -f monitoring/grafana-reporter-deployment.yaml
+
+# Générer un PDF du dashboard
+curl "http://localhost:8686/api/v5/report/nexslice-overview?apitoken=YOUR_API_TOKEN" > rapport_nexslice.pdf
+```
+
+### 3. Configurer des Alertes
+
+Créez `monitoring/prometheus-alerts.yaml`:
+```yaml
+groups:
+- name: nexslice_alerts
+  interval: 30s
+  rules:
+  - alert: HighLatency
+    expr: nexslice_rtt_avg_ms > 50
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Latence élevée détectée"
+      description: "La latence moyenne est de {{ $value }}ms (seuil: 50ms)"
+
+  - alert: PacketLoss
+    expr: nexslice_packet_loss_percent > 1
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Perte de paquets détectée"
+      description: "Perte de paquets: {{ $value }}% (seuil: 1%)"
+
+  - alert: LowThroughput
+    expr: nexslice_throughput_mbps < 10
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Débit faible"
+      description: "Débit: {{ $value }} Mbps (seuil: 10 Mbps)"
+```
 
 ---
 
 ## 🎯 Script 4: run-all-tests.sh (MASTER)
 
 ### Description
-Orchestre l'exécution de tous les tests de manière séquentielle et génère un rapport final.
+Orchestre l'exécution de tous les tests avec export automatique vers Prometheus.
 
-### Utilisation
-```bash
-cd scripts/
-sudo ./run-all-tests.sh
-```
-
-⚠️ **Nécessite sudo** pour les captures réseau
-
-### Ce qu'il fait
-```
-[Étape 0/4] Vérification des prérequis
-  ├── Vérifier présence des scripts
-  ├── Vérifier outils (ping, curl, tcpdump, iperf3, jq, bc)
-  └── Vérifier permissions
-
-[Étape 1/4] Test de Connectivité 5G
-  └── Exécute test-connectivity.sh
-
-[Étape 2/4] Test de Streaming Vidéo
-  └── Exécute test-video-streaming.sh
-
-[Étape 3/4] Mesures de Performance Réseau
-  └── Exécute measure-performance.sh
-
-[Étape 4/4] Génération du Rapport Final
-  ├── Compile tous les résultats
-  ├── Génère RAPPORT_FINAL.md
-  └── Résumé des fichiers créés
-```
+Le script génère maintenant:
+- Métriques temps réel dans Prometheus
+- Dashboards Grafana mis à jour
+- Rapport final avec lien vers Grafana
 
 ### Résultat Attendu
 ```
 ================================================
     NexSlice - Suite de Tests Complète
-    Projet 5G Network Slicing - Groupe 4
+    Monitoring: Prometheus + Grafana
 ================================================
 
 Date: 2025-11-29 12:34:56
 Log: results/test_run_20251129_123456.log
 
-[Étape 0/4] Vérification des prérequis
+[Étape 0/5] Vérification du monitoring
 ================================================
-✓ Tous les scripts sont présents
-✓ Tous les outils sont installés
+✓ Prometheus actif: http://localhost:30090
+✓ Pushgateway actif: http://localhost:30091
+✓ Grafana actif: http://localhost:30300
 
 [...exécution des tests...]
 
@@ -383,253 +917,74 @@ Log: results/test_run_20251129_123456.log
 
 📁 Tous les résultats sont dans: results/
 
+📊 Monitoring:
+   - Prometheus: http://localhost:30090
+   - Grafana: http://localhost:30300
+   - Dashboard NexSlice: http://localhost:30300/d/nexslice
+
 📄 Documents générés:
    - Rapport final: results/RAPPORT_FINAL_20251129_123456.md
    - Log complet: results/test_run_20251129_123456.log
 
-📊 Pour visualiser le rapport:
-   cat results/RAPPORT_FINAL_20251129_123456.md
-
 🔍 Prochaines étapes recommandées:
-   1. Analyser les captures réseau avec Wireshark
-   2. Comparer les métriques avec les objectifs du projet
-   3. Documenter les observations dans le README
-```
-
-### Fichiers Générés
-
-Le script génère une structure complète de résultats:
-
-```
-results/
-├── RAPPORT_FINAL_20251129_123456.md      # 📄 Rapport final complet
-├── test_run_20251129_123456.log          # 📋 Log de toute l'exécution
-├── performance/
-│   ├── ping_20251129_123456.json         # Métriques latence (JSON)
-│   ├── ping_20251129_123456.txt          # Sortie brute ping
-│   ├── interface_stats_20251129_123456.txt
-│   └── rapport_performance_20251129_123456.md
-├── captures/
-│   └── capture_20251129_123456.pcap      # Capture réseau
-├── video_20251129_123456.mp4             # Vidéo téléchargée
-└── curl_metrics_20251129_123456.txt      # Métriques HTTP
-```
-
----
-
-## 📈 Exploiter les Résultats
-
-### 1. Récupérer les Métriques pour votre README
-
-```bash
-# Latence moyenne
-jq -r '.results.rtt_avg_ms' results/performance/ping_*.json
-
-# Jitter
-jq -r '.results.jitter_ms' results/performance/ping_*.json
-
-# Perte de paquets
-jq -r '.results.packet_loss_percent' results/performance/ping_*.json
-```
-
-### 2. Calculer le Débit Moyen
-
-```bash
-# Depuis les métriques curl
-grep "Vitesse download:" results/curl_metrics_*.txt | awk '{print $3}'
-
-# Conversion en Mbps
-BYTES_PER_SEC=$(grep "Vitesse download:" results/curl_metrics_*.txt | awk '{print $3}')
-echo "scale=2; $BYTES_PER_SEC * 8 / 1000000" | bc
-```
-
-### 3. Créer un Tableau de Résultats
-
-```bash
-# Script pour générer un tableau Markdown
-cat > generate_table.sh << 'EOF'
-#!/bin/bash
-PING_JSON=$(ls -t results/performance/ping_*.json | head -1)
-CURL_LOG=$(ls -t results/curl_metrics_*.txt | head -1)
-
-RTT_AVG=$(jq -r '.results.rtt_avg_ms' "$PING_JSON")
-JITTER=$(jq -r '.results.jitter_ms' "$PING_JSON")
-LOSS=$(jq -r '.results.packet_loss_percent' "$PING_JSON")
-
-BYTES_PER_SEC=$(grep "Vitesse download:" "$CURL_LOG" | awk '{print $3}')
-DEBIT_MBPS=$(echo "scale=2; $BYTES_PER_SEC * 8 / 1000000" | bc)
-
-echo "| Métrique | Valeur |"
-echo "|----------|--------|"
-echo "| Latence moyenne | ${RTT_AVG} ms |"
-echo "| Jitter | ${JITTER} ms |"
-echo "| Perte de paquets | ${LOSS}% |"
-echo "| Débit moyen | ${DEBIT_MBPS} Mbps |"
-EOF
-
-chmod +x generate_table.sh
-./generate_table.sh
-```
-
----
-
-## 🐛 Dépannage Commun
-
-### Erreur: "Interface uesimtun0 non trouvée"
-
-**Cause**: Le UE UERANSIM n'est pas démarré ou n'a pas réussi à se connecter.
-
-**Solution**:
-```bash
-# Vérifier les pods
-kubectl get pods -n nexslice
-
-# Vérifier les logs du UE
-kubectl logs -n nexslice <ue-pod-name> | grep -i "connection setup"
-
-# Devrait afficher:
-# [INFO] Connection setup for PDU session[1] is successful
-```
-
-### Erreur: "No route to host"
-
-**Cause**: Le Core 5G n'a pas configuré correctement le routage.
-
-**Solution**:
-```bash
-# Vérifier l'UPF
-kubectl get pods -n nexslice | grep upf
-kubectl logs -n nexslice <upf-pod-name>
-
-# Redémarrer le UE si nécessaire
-kubectl delete pod -n nexslice <ue-pod-name>
-```
-
-### Erreur: "Permission denied" pour tcpdump
-
-**Cause**: tcpdump nécessite des privilèges root.
-
-**Solution**:
-```bash
-# Relancer avec sudo
-sudo ./scripts/test-video-streaming.sh
-sudo ./scripts/run-all-tests.sh
-```
-
-### Warning: "iperf3 server not accessible"
-
-**Cause**: Pas de serveur iperf3 disponible (normal).
-
-**Solution**: Ce test est optionnel. Pour l'activer:
-```bash
-# Sur une autre machine accessible:
-iperf3 -s
-
-# Puis relancer le script et entrer l'IP du serveur quand demandé
+   1. Consulter le dashboard Grafana
+   2. Vérifier les alertes Prometheus
+   3. Comparer les métriques avec les objectifs du projet
 ```
 
 ---
 
 ## 💡 Conseils et Bonnes Pratiques
 
-### 1. Exécuter les Tests dans l'Ordre
-
-Toujours commencer par le test de connectivité:
+### 1. Monitoring Continu
 ```bash
-./test-connectivity.sh    # D'abord
-./test-video-streaming.sh # Ensuite
-./measure-performance.sh  # Puis
+# Lancer les tests toutes les 5 minutes
+watch -n 300 './scripts/measure-performance.sh'
+
+# Ou via cron
+crontab -e
+# Ajouter: */5 * * * * /path/to/scripts/measure-performance.sh
 ```
 
-Ou utiliser le script maître:
+### 2. Créer des Snapshots Grafana
 ```bash
-sudo ./run-all-tests.sh   # Tout automatiquement
+# Sauvegarder l'état du dashboard
+curl -X POST http://localhost:30300/api/snapshots \
+  -H "Content-Type: application/json" \
+  -d @dashboard-snapshot.json
 ```
 
-### 2. Sauvegarder les Résultats
-
+### 3. Exporter les Métriques pour Analyse
 ```bash
-# Créer une archive des résultats
-tar -czf resultats_$(date +%Y%m%d).tar.gz results/
-
-# Copier dans un endroit sûr
-cp resultats_*.tar.gz ~/backup/
+# Exporter 24h de métriques
+curl -G http://localhost:30090/api/v1/query_range \
+  --data-urlencode 'query=nexslice_rtt_avg_ms{ue_ip="12.1.1.2"}' \
+  --data-urlencode 'start=2025-11-28T00:00:00Z' \
+  --data-urlencode 'end=2025-11-29T00:00:00Z' \
+  --data-urlencode 'step=15s' > metrics_24h.json
 ```
-
-### 3. Répéter les Tests
-
-Pour des résultats fiables, répétez les tests 3 fois:
-```bash
-for i in 1 2 3; do
-    echo "=== Test $i/3 ==="
-    sudo ./scripts/run-all-tests.sh
-    sleep 60  # Attendre 1 minute entre les tests
-done
-```
-
-### 4. Documenter les Conditions de Test
-
-Notez toujours:
-- Date et heure
-- Version du Core 5G
-- Configuration du UE
-- Conditions réseau (charge, etc.)
 
 ---
 
 ## 🎓 Utilisation pour la Présentation
 
-### Créer une Démonstration Live
-
+### Préparer une Démonstration Live
 ```bash
-# Script de démo pour présentation
-cat > demo.sh << 'EOF'
-#!/bin/bash
-echo "=== Démonstration NexSlice ==="
-echo ""
-echo "1. Vérification infrastructure..."
-kubectl get pods -n nexslice
-sleep 3
+# 1. Ouvrir Grafana en plein écran
+open http://localhost:30300/d/nexslice?refresh=5s&kiosk
 
-echo ""
-echo "2. Test connectivité 5G..."
-./scripts/test-connectivity.sh
-sleep 3
+# 2. Lancer les tests en arrière-plan
+./scripts/run-all-tests.sh &
 
-echo ""
-echo "3. Streaming vidéo via slice eMBB..."
-sudo ./scripts/test-video-streaming.sh
-EOF
+# 3. Montrer les métriques en temps réel
+# Les graphiques se mettront à jour automatiquement
 
-chmod +x demo.sh
-./demo.sh
-```
-
-### Préparer des Captures d'Écran
-
-```bash
-# Pendant les tests, prenez des screenshots de:
-# 1. kubectl get pods -n nexslice
-# 2. ip addr show uesimtun0
-# 3. ./test-connectivity.sh (résultats)
-# 4. Wireshark avec capture
-
-# Sauvegarder dans images/
-mkdir -p images/
-# Copiez vos screenshots ici
+# 4. Pointer vers des métriques clés
+# - Latence stable autour de 2-5ms
+# - Débit constant à 25-30 Mbps
+# - Zéro perte de paquets
 ```
 
 ---
 
-## 📞 Support
-
-Si vous rencontrez des problèmes:
-
-1. Vérifiez d'abord la section **Dépannage** ci-dessus
-2. Consultez les logs: `cat results/test_run_*.log`
-3. Vérifiez l'infrastructure: `kubectl get pods -n nexslice`
-4. Demandez de l'aide avec les logs complets
-
----
-
-*Guide d'utilisation des scripts - Projet NexSlice - Groupe 4*
+*Guide d'utilisation avec monitoring Prometheus & Grafana - Projet NexSlice - Groupe 4*

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script Principal - Tests Complets NexSlice
+# Script Principal - Tests Complets NexSlice avec Monitoring
 # Projet: Emulation Traffic Vidéo sur Network Slicing 5G
 # Groupe: 4 - Année: 2025-2026
 
@@ -19,6 +19,7 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_DIR="$SCRIPT_DIR/../results"
 LOG_FILE="$RESULTS_DIR/test_run_$(date +%Y%m%d_%H%M%S).log"
+MONITORING_ENABLED=true
 
 # Créer les dossiers nécessaires
 mkdir -p "$RESULTS_DIR"
@@ -34,6 +35,7 @@ log() {
 clear
 log "${CYAN}================================================${NC}"
 log "${CYAN}    NexSlice - Suite de Tests Complète${NC}"
+log "${CYAN}    Monitoring: Prometheus + Grafana${NC}"
 log "${CYAN}    Projet 5G Network Slicing - Groupe 4${NC}"
 log "${CYAN}================================================${NC}"
 log ""
@@ -44,11 +46,11 @@ log ""
 # ============================================
 # Vérification prérequis
 # ============================================
-log "${BOLD}[Étape 0/4] Vérification des prérequis${NC}"
+log "${BOLD}[Étape 0/5] Vérification des prérequis${NC}"
 log "================================================"
 log ""
 
-# Vérifier les scripts
+# Vérifier les scripts principaux
 REQUIRED_SCRIPTS=(
     "test-connectivity.sh"
     "test-video-streaming.sh"
@@ -70,11 +72,12 @@ fi
 
 # Rendre les scripts exécutables
 chmod +x "$SCRIPT_DIR"/*.sh
+chmod +x "$SCRIPT_DIR"/monitoring/*.sh 2>/dev/null || true
 
 log "${GREEN}✓ Tous les scripts sont présents${NC}"
 
 # Vérifier les outils
-REQUIRED_TOOLS=("ping" "curl" "tcpdump" "iperf3" "jq" "bc")
+REQUIRED_TOOLS=("ping" "curl" "jq" "bc")
 MISSING_TOOLS=()
 
 for tool in "${REQUIRED_TOOLS[@]}"; do
@@ -86,7 +89,7 @@ done
 if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
     log "${YELLOW}⚠ Outils manquants: ${MISSING_TOOLS[*]}${NC}"
     log "Installation recommandée:"
-    log "  sudo apt install -y iputils-ping curl tcpdump iperf3 jq bc"
+    log "  sudo apt install -y iputils-ping curl jq bc"
     log ""
     read -p "Continuer malgré tout? (y/N) " -n 1 -r
     echo
@@ -97,11 +100,35 @@ else
     log "${GREEN}✓ Tous les outils sont installés${NC}"
 fi
 
-# Vérifier les permissions (pour tcpdump)
-if [ "$EUID" -ne 0 ]; then
-    log "${YELLOW}⚠ Script non lancé en root${NC}"
-    log "Certaines fonctionnalités (tcpdump) nécessitent sudo"
+# Vérifier le monitoring
+log ""
+log "${BOLD}Vérification de la stack de monitoring...${NC}"
+
+if bash "$SCRIPT_DIR/monitoring/check-monitoring.sh" &> /dev/null; then
+    log "${GREEN}✓ Stack de monitoring opérationnelle${NC}"
+    log "  • Prometheus:  http://localhost:30090"
+    log "  • Pushgateway: http://localhost:30091"
+    log "  • Grafana:     http://localhost:30300"
+    MONITORING_ENABLED=true
+else
+    log "${YELLOW}⚠ Stack de monitoring non disponible${NC}"
     log ""
+    read -p "Installer la stack de monitoring maintenant? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        log ""
+        log "Installation de la stack de monitoring..."
+        if bash "$SCRIPT_DIR/monitoring/setup-monitoring.sh" | tee -a "$LOG_FILE"; then
+            log "${GREEN}✓ Stack de monitoring installée${NC}"
+            MONITORING_ENABLED=true
+        else
+            log "${RED}✗ Échec de l'installation${NC}"
+            MONITORING_ENABLED=false
+        fi
+    else
+        log "${YELLOW}Tests sans monitoring (métriques non exportées)${NC}"
+        MONITORING_ENABLED=false
+    fi
 fi
 
 log ""
@@ -138,6 +165,26 @@ if ! bash "$SCRIPT_DIR/test-video-streaming.sh" 2>&1 | tee -a "$LOG_FILE"; then
 else
     log ""
     log "${GREEN}✓ Test de streaming réussi${NC}"
+    
+    # Export des métriques de streaming si monitoring actif
+    if [ "$MONITORING_ENABLED" = true ]; then
+        log ""
+        log "Export des métriques de streaming vers Prometheus..."
+        
+        LATEST_CURL=$(find "$RESULTS_DIR" -name "curl_metrics_*.txt" -type f -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2)
+        
+        if [ -f "$LATEST_CURL" ]; then
+            TOTAL_TIME=$(grep "Temps total:" "$LATEST_CURL" | awk '{print $3}' | sed 's/s//')
+            DOWNLOAD_SPEED=$(grep "Vitesse download:" "$LATEST_CURL" | awk '{print $3}')
+            DOWNLOAD_SPEED_MBPS=$(echo "scale=2; $DOWNLOAD_SPEED * 8 / 1000000" | bc)
+            UE_IP="12.1.1.2"
+            
+            source "$SCRIPT_DIR/monitoring/export-metrics.sh"
+            export_streaming_metrics "$TOTAL_TIME" "$DOWNLOAD_SPEED_MBPS" "$UE_IP" "embb"
+            
+            log "${GREEN}✓ Métriques exportées vers Prometheus${NC}"
+        fi
+    fi
 fi
 
 log ""
@@ -155,6 +202,27 @@ if ! bash "$SCRIPT_DIR/measure-performance.sh" 2>&1 | tee -a "$LOG_FILE"; then
 else
     log ""
     log "${GREEN}✓ Mesures de performance réussies${NC}"
+    
+    # Export des métriques de performance si monitoring actif
+    if [ "$MONITORING_ENABLED" = true ]; then
+        log ""
+        log "Export des métriques de performance vers Prometheus..."
+        
+        LATEST_PING=$(find "$RESULTS_DIR/performance" -name "ping_*.json" -type f -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2)
+        
+        if [ -f "$LATEST_PING" ]; then
+            source "$SCRIPT_DIR/monitoring/export-metrics.sh"
+            export_from_json "$LATEST_PING" "12.1.1.2" "embb"
+            
+            log "${GREEN}✓ Métriques exportées vers Prometheus${NC}"
+        fi
+        
+        # Export des stats interface
+        if ip link show uesimtun0 &> /dev/null; then
+            export_interface_metrics "uesimtun0" "12.1.1.2"
+            log "${GREEN}✓ Métriques d'interface exportées${NC}"
+        fi
+    fi
 fi
 
 log ""
@@ -176,6 +244,7 @@ cat > "$FINAL_REPORT" <<EOF
 **Date**: $(date '+%Y-%m-%d %H:%M:%S')  
 **Groupe**: 4  
 **Étudiants**: Tifenne Jupiter, Emilie Melis, Eya Walha  
+**Monitoring**: $([ "$MONITORING_ENABLED" = true ] && echo "✅ Prometheus + Grafana" || echo "❌ Désactivé")
 
 ---
 
@@ -188,6 +257,24 @@ cat > "$FINAL_REPORT" <<EOF
 - **IP UE**: 12.1.1.2
 - **Gateway UPF**: 12.1.1.1
 
+EOF
+
+if [ "$MONITORING_ENABLED" = true ]; then
+    cat >> "$FINAL_REPORT" <<EOF
+### Stack de Monitoring
+
+- **Prometheus**: http://localhost:30090
+- **Pushgateway**: http://localhost:30091
+- **Grafana**: http://localhost:30300
+  - Username: \`admin\`
+  - Password: \`admin\`
+
+**Dashboard Grafana**: [NexSlice Monitoring](http://localhost:30300/d/nexslice)
+
+EOF
+fi
+
+cat >> "$FINAL_REPORT" <<EOF
 ---
 
 ## 2. Résultats des Tests
@@ -205,11 +292,11 @@ if [ -f "$LATEST_PING" ]; then
     PACKET_LOSS=$(jq -r '.results.packet_loss_percent' "$LATEST_PING")
     
     cat >> "$FINAL_REPORT" <<EOF
-| Métrique | Valeur |
-|----------|--------|
-| Latence moyenne | ${RTT_AVG} ms |
-| Jitter | ${JITTER} ms |
-| Perte de paquets | ${PACKET_LOSS}% |
+| Métrique | Valeur | État |
+|----------|--------|------|
+| Latence moyenne | ${RTT_AVG} ms | $([ $(echo "$RTT_AVG < 10" | bc) -eq 1 ] && echo "✅ Excellent" || echo "⚠️ Acceptable") |
+| Jitter | ${JITTER} ms | $([ $(echo "$JITTER < 5" | bc) -eq 1 ] && echo "✅ Excellent" || echo "⚠️ Acceptable") |
+| Perte de paquets | ${PACKET_LOSS}% | $([ $(echo "$PACKET_LOSS == 0" | bc) -eq 1 ] && echo "✅ Aucune" || echo "⚠️ Présente") |
 
 ✅ **Conclusion**: Connectivité 5G stable et fonctionnelle
 
@@ -256,6 +343,16 @@ cat >> "$FINAL_REPORT" <<EOF
 
 *Voir les rapports détaillés dans:* \`results/performance/\`
 
+EOF
+
+if [ "$MONITORING_ENABLED" = true ]; then
+    cat >> "$FINAL_REPORT" <<EOF
+**📊 Visualisation en temps réel**: Consultez le [dashboard Grafana](http://localhost:30300/d/nexslice) pour voir l'évolution des métriques.
+
+EOF
+fi
+
+cat >> "$FINAL_REPORT" <<EOF
 ---
 
 ## 3. Validation du Routage 5G
@@ -265,7 +362,7 @@ Le trafic passe bien par le slice 5G, comme le prouvent:
 1. **Interface utilisée**: uesimtun0 (tunnel 5G)
 2. **IP source**: 12.1.1.2 (IP attribuée par le Core 5G)
 3. **Gateway**: 12.1.1.1 (UPF du Core OAI)
-4. **Captures réseau**: Confirment le passage par l'interface 5G
+4. **Métriques**: Confirmées via $([ "$MONITORING_ENABLED" = true ] && echo "Prometheus" || echo "logs locaux")
 
 ---
 
@@ -277,6 +374,16 @@ Le trafic passe bien par le slice 5G, comme le prouvent:
 - Slice eMBB (SST=1) correctement configuré
 - Streaming vidéo opérationnel via le tunnel 5G
 - Métriques de performance cohérentes avec un slice eMBB
+EOF
+
+if [ "$MONITORING_ENABLED" = true ]; then
+    cat >> "$FINAL_REPORT" <<EOF
+- Stack de monitoring Prometheus + Grafana opérationnelle
+- Export automatique des métriques pour analyse temps réel
+EOF
+fi
+
+cat >> "$FINAL_REPORT" <<EOF
 
 ### Limitations Identifiées
 
@@ -288,7 +395,7 @@ Le trafic passe bien par le slice 5G, comme le prouvent:
 ### Perspectives
 
 1. **Court terme**: Déployer plusieurs UEs simultanés
-2. **Moyen terme**: Implémenter les tests multi-slices
+2. **Moyen terme**: Implémenter les tests multi-slices avec monitoring différencié
 3. **Long terme**: Tests sur infrastructure 5G réelle
 
 ---
@@ -300,7 +407,7 @@ Tous les résultats sont disponibles dans \`results/\`:
 EOF
 
 # Lister les fichiers générés
-find "$RESULTS_DIR" -type f -name "*.txt" -o -name "*.json" -o -name "*.pcap" -o -name "*.mp4" 2>/dev/null | while read file; do
+find "$RESULTS_DIR" -type f \( -name "*.txt" -o -name "*.json" -o -name "*.mp4" \) 2>/dev/null | while read file; do
     echo "- \`$(basename $file)\`" >> "$FINAL_REPORT"
 done
 
@@ -317,10 +424,36 @@ Pour reproduire ces tests:
 git clone https://github.com/EyaWal/Projet_NexSlice_Emulation_traffic-video.git
 cd Projet_NexSlice_Emulation_traffic-video
 
-# 2. Lancer la suite de tests
+# 2. Installer la stack de monitoring (optionnel)
+./scripts/monitoring/setup-monitoring.sh
+
+# 3. Lancer la suite de tests
 sudo ./scripts/run-all-tests.sh
 \`\`\`
 
+EOF
+
+if [ "$MONITORING_ENABLED" = true ]; then
+    cat >> "$FINAL_REPORT" <<EOF
+## 7. Monitoring Continu
+
+Pour surveiller en continu:
+
+\`\`\`bash
+# Lancer les tests toutes les 5 minutes
+watch -n 300 './scripts/measure-performance.sh'
+
+# Ou via cron
+crontab -e
+# Ajouter: */5 * * * * /path/to/scripts/measure-performance.sh
+\`\`\`
+
+Consultez Grafana pour voir l'évolution: http://localhost:30300
+
+EOF
+fi
+
+cat >> "$FINAL_REPORT" <<EOF
 ---
 
 *Rapport généré automatiquement par run-all-tests.sh*
@@ -342,13 +475,28 @@ log "📄 Documents générés:"
 log "   - Rapport final: $FINAL_REPORT"
 log "   - Log complet: $LOG_FILE"
 log ""
+
+if [ "$MONITORING_ENABLED" = true ]; then
+    log "📊 Monitoring:"
+    log "   - Prometheus: ${CYAN}http://localhost:30090${NC}"
+    log "   - Grafana: ${CYAN}http://localhost:30300${NC}"
+    log "   - Dashboard NexSlice: ${CYAN}http://localhost:30300/d/nexslice${NC}"
+    log ""
+fi
+
 log "📊 Pour visualiser le rapport:"
 log "   cat $FINAL_REPORT"
 log ""
 log "🔍 Prochaines étapes recommandées:"
-log "   1. Analyser les captures réseau avec Wireshark"
-log "   2. Comparer les métriques avec les objectifs du projet"
-log "   3. Documenter les observations dans le README"
+if [ "$MONITORING_ENABLED" = true ]; then
+    log "   1. Consulter le dashboard Grafana"
+    log "   2. Analyser les tendances des métriques"
+    log "   3. Configurer des alertes si nécessaire"
+else
+    log "   1. Installer le monitoring: ./scripts/monitoring/setup-monitoring.sh"
+    log "   2. Relancer les tests pour collecter les métriques"
+fi
+log "   4. Documenter les observations dans le README"
 log ""
 
 exit 0
