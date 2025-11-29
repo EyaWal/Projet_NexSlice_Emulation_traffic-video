@@ -5,9 +5,6 @@
 **Étudiants**: Tifenne Jupiter, Emilie Melis, Eya Walha  
 **Année**: 2025-2026  
 
-[![Infrastructure](https://img.shields.io/badge/Infrastructure-NexSlice-blue)](https://github.com/AIDY-F2N/NexSlice/tree/k3s)
-[![Core](https://img.shields.io/badge/Core-OAI-green)](https://openairinterface.org/)
-[![Simulator](https://img.shields.io/badge/Simulator-UERANSIM-orange)](https://github.com/aligungr/UERANSIM)
 
 ---
 
@@ -75,7 +72,7 @@ Notre projet s'appuie sur l'infrastructure **NexSlice** fournie par le professeu
 
 ---
 
-## 📚 État de l'Art
+## État de l'Art
 
 ### Network Slicing 5G
 
@@ -178,7 +175,7 @@ UE (12.1.1.2)
 
 ---
 
-## 🔬 Méthodologie
+##  Méthodologie
 
 ### Approche Expérimentale
 
@@ -336,17 +333,12 @@ $ tcpdump -r capture-sst1.pcap -nn | head -10
 - [ ] Implémenter les tests multi-slices (SST=1, 2, 3)
 - [ ] Varier les types de contenu (live streaming, différentes résolutions)
 - [ ] Ajouter un dashboard de monitoring temps réel
-
-#### Moyen Terme
 - [ ] Tester avec plus de charge réseau (10+ UEs)
 - [ ] Implémenter des politiques QoS dynamiques
 - [ ] Ajouter mobilité et handover entre slices
 - [ ] Intégration avec Prometheus/Grafana pour métriques
 
-#### Long Terme
-- [ ] Tests sur infrastructure 5G commerciale
-- [ ] Intégration avec edge computing (MEC)
-- [ ] Application aux cas d'usage industriels (Industry 4.0)
+
 
 ---
 
