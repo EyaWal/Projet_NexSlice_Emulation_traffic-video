@@ -1,0 +1,25 @@
+# Fichiers temporaires
+*.tmp
+*.log
+*~
+.DS_Store
+
+# Fichiers volumineux
+*.mp4
+*.avi
+*.pcap
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+
+# Secrets
+*.key
+*.pem
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,17 @@
+supi: 'imsi-001010000000001'
+mcc: '001'
+mnc: '01'
+key: '465B5CE8B199B49FAA5F0A2EE238A6BC'
+op: 'E8ED289DEBA952E4283B54E88E6183CA'
+opType: 'OPC'
+sessions:
+  - type: 'IPv4'
+    apn: 'internet'
+    slice:
+      sst: 1
+      sd: 0x000001
+gnbSearchList:
+  - 127.0.0.1
+configured-nssai:
+  - sst: 1
+    sd: 0x000001

@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ffmpeg-server
+  namespace: nexslice
+  labels:
+    app: ffmpeg-server
+spec:
+  containers:
+  - name: ffmpeg
+    image: ubuntu:22.04
+    command: ["/bin/bash", "-c"]
+    args:
+      - |
+        set -e
+        apt-get update && apt-get install -y ffmpeg nginx wget curl
+        mkdir -p /var/www/html/videos
+        wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4 -O /var/www/html/videos/video.mp4
+        cat > /etc/nginx/sites-available/default <<'NGINX'
+        server {
+            listen 8080;
+            location /videos/ {
+                alias /var/www/html/videos/;
+                add_header Access-Control-Allow-Origin *;
+                types { video/mp4 mp4; }
+            }
+        }
+NGINX
+        nginx -g 'daemon off;'
+    ports:
+    - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ffmpeg-server
+  namespace: nexslice
+spec:
+  selector:
+    app: ffmpeg-server
+  ports:
+  - port: 8080
+    targetPort: 8080
+  type: ClusterIP
