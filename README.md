@@ -93,7 +93,6 @@ Par exemple :
 **Justification** :
 - Open-source et bien documenté
 - Supporte les slices réseau (S-NSSAI)
-- Compatible avec Free5GC et Open5GS
 -  Interface tunnel (TUN) pour le trafic applicatif
 -  Limitations : Pas de simulation radio réelle, pas de mobilité
 
@@ -149,7 +148,7 @@ Par exemple :
 ### Plan d'Expérimentation
 
 **Phase 1 - Configuration de base** :
-1. Installation UERANSIM + Free5GC/Open5GS
+1. Installation Nexslice
 2. Configuration d'un UE avec slice SST=1
 3. Validation connectivité (ping UPF)
 4. Déploiement serveur vidéo
@@ -182,7 +181,30 @@ Par exemple :
 ---
 
 ## Architecture et Implémentation
+Dans ce projet, l’infrastructure 5G **n’est pas déployée manuellement**, mais fournie par le **TP NexSlice du professeur**.  
+NexSlice fournit une pile 5G complète prête à l’emploi comprenant :
 
+- **Core 5G OAI (OpenAirInterface)** déployé via Helm sur k3s  
+- **RAN : gNB OAI ou UERANSIM**  
+- **UE(s) 5G simulés** (conteneurs UERANSIM)  
+- **Orchestration Kubernetes (k3s)**  
+- **Namespace utilisé : `nexslice`**
+Notre dépôt **n’ajoute pas un Core 5G**, mais uniquement l’application de test :
+
+- un **serveur vidéo (nginx + ffmpeg)** déployé sur Kubernetes  
+- des **scripts de test** pour analyser la connectivité et la QoS  
+- un scénario **mono-UE / mono-slice (SST = 1, eMBB)**
+---
+### Scénario retenu
+
+Le projet initial devait comparer trois slices (eMBB, URLLC, mMTC) avec plusieurs UEs.  
+Cependant, **la version réellement implémentée** se concentre sur :
+
+- **1 seul UE**, connecté via l’infrastructure NexSlice  
+- **1 seul slice : eMBB (SST = 1)**  
+- **Tests complets jusqu’à la Phase 2**  
+- La Phase 3 (multi-slice / multi-UE) est **prévue mais non réalisée** et discutée en perspectives
+- 
 ### Configuration UERANSIM
 
 #### UE Configuration (UE1 - SST=1)
