@@ -91,11 +91,11 @@ Par exemple :
 #### UERANSIM pour la Simulation 5G
 
 **Justification** :
-- ✅ Open-source et bien documenté
-- ✅ Supporte les slices réseau (S-NSSAI)
-- ✅ Compatible avec Free5GC et Open5GS
-- ✅ Interface tunnel (TUN) pour le trafic applicatif
-- ❌ Limitations : Pas de simulation radio réelle, pas de mobilité
+- Open-source et bien documenté
+- Supporte les slices réseau (S-NSSAI)
+- Compatible avec Free5GC et Open5GS
+-  Interface tunnel (TUN) pour le trafic applicatif
+-  Limitations : Pas de simulation radio réelle, pas de mobilité
 
 **Alternatives considérées** :
 - srsRAN : Plus complexe, nécessite hardware SDR
@@ -105,10 +105,10 @@ Par exemple :
 #### FFmpeg pour le Streaming Vidéo
 
 **Justification** :
-- ✅ Contrôle fin des paramètres de streaming
-- ✅ Support multiple formats (MP4, HLS, DASH)
-- ✅ Facilité d'intégration en conteneur
-- ✅ Métriques détaillées disponibles
+-  Contrôle fin des paramètres de streaming
+-  Support multiple formats (MP4, HLS, DASH)
+-  Facilité d'intégration en conteneur
+-  Métriques détaillées disponibles
 
 **Alternatives considérées** :
 - VLC : Interface moins scriptable
@@ -118,10 +118,10 @@ Par exemple :
 #### Kubernetes (k3s) pour l'Orchestration
 
 **Justification** :
-- ✅ Gestion simplifiée des conteneurs
-- ✅ Scalabilité pour tests multi-UE
-- ✅ k3s : Version légère, faible empreinte mémoire
-- ✅ Facilite la reproductibilité
+-  Gestion simplifiée des conteneurs
+-  Scalabilité pour tests multi-UE
+-  k3s : Version légère, faible empreinte mémoire
+-  Facilite la reproductibilité
 
 ### Architecture Expérimentale
 
@@ -660,10 +660,10 @@ kubectl get svc
 
 ---
 
-**Contact** : [Vos emails]  
-**Repository** : https://github.com/votre-username/NexSlice  
+**Contact** : eya.walha@telecom-sudparis.eu  
+**Repository** : https://github.com/EyaWal/Projet_NexSlice_Emulation_traffic-video  
 **Vidéo** : [Lien YouTube/Drive vers votre vidéo de démonstration]
 
 ---
 
-*README généré pour le projet [Numéro] - [Nom du cours] - [Année académique]*
+*README généré pour le projet 2 -Groupe 4 - Infrastructure intelligente logicielle des Réseaux mobiles - 2025/2026*
