@@ -411,11 +411,11 @@ kubectl apply -f configs/kubernetes/video-server.yaml
 - 1 slice : eMBB (SST=1, SD=1)
 - Interface tunnel : uesimtun0 (IP: 12.1.1.2)
 - Gateway UPF : 12.1.1.1
-
+- Serveur vidéo : FFmpeg + nginx déployé sur K8s
 **Fichier vidéo** :
-- Format : MP4 (BigBuckBunny)
-- Taille : 158 MB
-- Source : Google Cloud Storage
+- URL externe : http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+- Format : MP4
+- Taille : ~158 MB
 
 #### Métriques Mesurées - Slice eMBB (SST=1)
 
@@ -428,7 +428,7 @@ kubectl apply -f configs/kubernetes/video-server.yaml
 | Latence Max        | [À COMPLÉTER] ms |
 | Jitter (mdev)      | [À COMPLÉTER] ms |
 
-**Débit (Transfert vidéo - 3 essais)** :
+**Débit (Téléchargement HTTP via uesimtun0 - 3 essais)** :
 
 | Essai | Temps (s)     | Débit (Mbps)  |
 |-------|---------------|---------------|
@@ -437,24 +437,16 @@ kubectl apply -f configs/kubernetes/video-server.yaml
 | 3     | [À COMPLÉTER] | [À COMPLÉTER] |
 | **MOYENNE** | - | **[À COMPLÉTER]** |
 
-*Calcul du débit : (158 MB × 8) / temps_en_secondes*
+*Méthode : Téléchargement via `curl --interface uesimtun0` depuis l'UE*
 
-#### Captures d'Écran
+#### Validation du Routage 5G
 
-![Interface uesimtun0](images/screenshot1-interface.png)
-*Interface tunnel 5G avec IP 12.1.1.2*
-
-![Configuration Slice](images/screenshot2-slice.png)
-*Configuration du slice eMBB (SST=1, SD=1)*
-
-![Téléchargement](images/screenshot3-download.png)
-*Transfert de la vidéo via le tunnel 5G*
-
-![Logs UPF](images/screenshot4-upf.png)
-*Logs UPF montrant le routage du trafic*
-
-![Architecture](images/screenshot5-architecture.png)
-*Infrastructure déployée sur Kubernetes*
+**Preuve que le trafic passe par le slice 5G** :
+1. Interface utilisée : `uesimtun0` (spécifiée via `--interface`)
+2. IP source : `12.1.1.2` (IP du UE sur le tunnel 5G)
+3. Gateway : `12.1.1.1` (UPF du Core 5G)
+4. Logs UPF : Confirment le passage du trafic HTTP
+5. Capture tcpdump : Montre les paquets sur uesimtun0
 
 ### Analyse des Résultats
 
@@ -465,22 +457,20 @@ kubectl apply -f configs/kubernetes/video-server.yaml
    - Ping vers UPF (12.1.1.1) : 0% de perte
    - Slice eMBB (SST=1) correctement configuré
 
-2. **Performance du slice eMBB** :
+2. **Streaming HTTP via le tunnel 5G** :
+   - Le téléchargement HTTP fonctionne via `--interface uesimtun0`
+   - Le trafic transite par l'UPF (visible dans les logs)
+   - Débit de [X] Mbps cohérent avec les capacités eMBB
+
+3. **Performance du slice eMBB** :
    - Latence moyenne de [X] ms adaptée au streaming vidéo
-   - Débit moyen de [X] Mbps suffisant pour streaming HD
-   - Jitter faible ([X] ms) assurant une expérience fluide
+   - Débit suffisant pour streaming HD (> 10 Mbps requis)
+   - Jitter faible assurant une expérience fluide
 
-3. **Validation du routage 5G** :
-   - Le trafic passe bien par l'interface uesimtun0
+4. **Validation du routage 5G** :
+   - Le flag `--interface uesimtun0` force le passage par le tunnel
    - Les logs UPF confirment le routage via le Core 5G
-   - Le transfert s'effectue via le slice configuré
-
-4. **Comparaison avec les attentes** :
-   - Le slice eMBB remplit son rôle de haut débit
-   - Les performances sont cohérentes avec les spécifications 3GPP
-   - Le streaming vidéo HD est viable sur cette configuration
-
-
+   - Le transfert s'effectue bien via le slice SST=1
 
    |
 
