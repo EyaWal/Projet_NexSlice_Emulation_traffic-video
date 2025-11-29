@@ -205,70 +205,30 @@ Cependant, **la version réellement implémentée** se concentre sur :
 - **Tests complets jusqu’à la Phase 2**  
 - La Phase 3 (multi-slice / multi-UE) est **prévue mais non réalisée** et discutée en perspectives
 - 
-### Configuration UERANSIM
+### Architecure globale utilisée
+L’architecture finale est la suivante :
+ Infrastructure NexSlice (TP)
+│
+├── Core 5G OAI (AMF, SMF, UPF, NRF…)
+├── gNB (UERANSIM ou OAI)
+├── UE 5G simulé (UERANSIM) → interface uesimtun0 sur la machine
+└── Cluster Kubernetes k3s (namespace nexslice)
+└── Deployment : video-server (nginx + ffmpeg)
 
-#### UE Configuration (UE1 - SST=1)
+Le trafic suit le chemin :
 
-```yaml
-# configs/ueransim/ue1-config.yaml
-supi: 'imsi-001010000000001'
-mcc: '001'
-mnc: '01'
+UE (uesimtun0)
+→ gNB
+→ Core OAI
+→ UPF
+→ Service Kubernetes (video-server-service)
 
-key: '465B5CE8B199B49FAA5F0A2EE238A6BC'
-op: 'E8ED289DEBA952E4283B54E88E6183CA'
-opType: 'OPC'
+#### 
 
-sessions:
-  - type: 'IPv4'
-    apn: 'internet'
-    slice:
-      sst: 1  # eMBB
-      sd: 0x000001
 
-gnbSearchList:
-  - 127.0.0.1
-```
 
-**Variations pour UE2 et UE3** : Modification de `sst` (2 pour URLLC, 3 pour mMTC) et `supi`.
 
-### Déploiement Kubernetes
-
-#### Video Server Deployment
-
-```yaml
-# configs/kubernetes/video-server.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: video-server
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: video-server
-  template:
-    metadata:
-      labels:
-        app: video-server
-    spec:
-      containers:
-      - name: nginx
-        image: nginx:alpine
-        ports:
-        - containerPort: 80
-        volumeMounts:
-        - name: video-content
-          mountPath: /usr/share/nginx/html
-      - name: ffmpeg
-        image: linuxserver/ffmpeg:latest
-        volumeMounts:
-        - name: video-content
-          mountPath: /videos
-      volumes:
-      - name: video-content
-        emptyDir: {}
-```
+  
 
 ### Scripts de Test
 
