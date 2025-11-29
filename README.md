@@ -1,8 +1,9 @@
 # NexSlice - Network Slicing 5G pour Streaming Vidéo
 
-> **Projet** : [Numéro du projet]  
-> **Étudiants** : [NOM1], [NOM2], [NOM3]  
-> **Année** : 2024-2025  
+> **Projet** : 2
+> **Groupe** : 4  
+> **Étudiants** : Tifenne Jupiter, Emilie Melis, Eya Walha  
+> **Année** : 2025-2026  
 > **Vidéo de démonstration** : [Lien vers la vidéo]
 
 ---
