@@ -65,7 +65,7 @@ Notre projet s'appuie sur l'infrastructure **NexSlice** fournie par le professeu
 - Mesures de performance réseau détaillées
 - Scripts de test automatisés et reproductibles
 - Monitoring temps réel avec Prometheus et Grafana
-
+- Alertes automatiques sur les métriques critiques
 
 **Ce qui n'a PAS été implémenté** (Phase 3 - Perspectives):
 - Tests multi-slices (SST=1, 2, 3)
@@ -79,57 +79,50 @@ Notre projet s'appuie sur l'infrastructure **NexSlice** fournie par le professeu
 
 ## État de l'Art
 
-# État de l'art - Émulation de trafic vidéo en 5G
+### Network Slicing 5G
 
-### 1. Contexte général
+Le network slicing est défini par le 3GPP dans les spécifications Release 15+ [1]. Un slice est identifié par un **S-NSSAI** (Single Network Slice Selection Assistance Information):
 
-Avec la 5G, le Network Slicing permet de découper le réseau en plusieurs tranches dédiées à différents usages (eMBB, URLLC, mMTC). Les outils classiques comme ping ou iperf3 mesurent surtout la latence ou le débit, mais ne reflètent pas vraiment le comportement réel d'applications comme le streaming vidéo HD.
-![image](chemin/vers/image.png)
+- **SST** (Slice/Service Type): 1-255
+- **SD** (Slice Differentiator): Optionnel, 24 bits
 
-C'est pourquoi de nombreux travaux cherchent aujourd'hui à mieux émuler ou analyser un trafic vidéo réaliste, afin d'évaluer l'impact du slicing sur les performances et la qualité perçue par l'utilisateur.
+### Types de Slices Standardisés [2]
 
-### 2. Expérimentations vidéo dans des environnements 5G
+| Type | SST | Cas d'usage | Caractéristiques |
+|------|-----|-------------|------------------|
+| eMBB | 1 | Streaming vidéo, navigation | Haut débit (>100 Mbps) |
+| URLLC | 2 | Véhicules autonomes, chirurgie | Latence <1ms, fiabilité 99.999% |
+| mMTC | 3 | IoT, capteurs | Haute densité, faible énergie |
 
-Des expérimentations récentes menées avec la pile OpenAirInterface (OAI) et des UEs virtuels montrent comment le débit, la latence et la stabilité vidéo interagissent, et proposent des méthodologies adaptées à des plateformes entièrement virtualisées comme NexSlice (source 1).
+### Streaming Vidéo sur 5G
 
-D'autres démonstrations autour de la vidéosurveillance en temps réel mettent en avant la capacité du slicing à réduire la latence et stabiliser le flux, illustrant l'intérêt de cette approche pour des services exigeants comme les flux eMBB (source 7).
+Des études montrent l'impact du network slicing sur la QoS vidéo [3]. Les métriques clés incluent:
 
-### 3. Modélisation et estimation de la QoE
+- **Débit** (throughput): Mbps disponible
+- **Latence**: Round-Trip Time (RTT)
+- **Jitter**: Variation de latence
+- **Taux de perte**: Paquets perdus
 
-Plusieurs travaux proposent des modèles reliant les métriques réseau (débit, latence, pertes) à la QoE, ce qui permet d'interpréter les performances du réseau du point de vue de l'utilisateur final (source 3).
+### Outils d'Émulation
 
-D'autres recherches se focalisent sur la vidéo Ultra-HD, en utilisant des indicateurs tels que PSNR, SSIM ou VMAF pour mieux caractériser la qualité perçue (source 5).
+**UERANSIM** [4] est un simulateur open-source permettant de tester les fonctionnalités 5G:
+- Simule des UE (User Equipment) et gNB (station de base 5G)
+- Supporte les network slices (S-NSSAI)
+- Interface tunnel (TUN) pour le trafic applicatif
+- **Limitation**: Pas de simulation radio réelle, pas de mobilité
 
-Des méthodes d'adaptation basées sur MPEG-DASH, associées à l'évaluation automatique de l'image, offrent également des pistes pour configurer efficacement des pipelines vidéo comme GStreamer dans un contexte eMBB (source 10).
+**Alternatives évaluées**:
+- srsRAN: Plus complexe, nécessite du hardware SDR
+- OAI: Configuration plus lourde
+- UERANSIM retenu pour sa simplicité et rapidité de déploiement
 
-### 4. Adaptation dynamique et optimisation énergétique
+### Monitoring et Observabilité
 
-Des architectures intégrant la virtualisation des fonctions réseau montrent qu'il est possible d'adapter la qualité vidéo en tenant compte à la fois de la QoE et de la consommation énergétique. Ces approches s'inscrivent dans la même logique que NexSlice, qui cherche à orchestrer intelligemment les ressources selon la demande (source 2).
-
-### 5. Fiabilité et résilience du streaming en 5G
-
-Des études menées sur les réseaux à ondes millimétriques mettent en avant l'intérêt de la multi-connectivité et du network coding pour stabiliser le débit et réduire la variabilité du flux (source 6).
-
-D'autres analyses montrent aussi que la congestion dans la RAN influence directement la lecture vidéo (par exemple via QUIC), en provoquant des interruptions liées aux files d'attente radio — un phénomène qu'il est possible de reproduire dans un environnement émulé comme OAI/NexSlice (source 9).
-
-### 6. Slicing orienté QoE et isolation des services
-
-Certaines architectures récentes de RAN slicing sont conçues pour optimiser la QoE et garantir une isolation stricte entre services. Elles insistent sur la nécessité de corréler automatiquement les métriques réseau et les indicateurs de qualité perçue afin d'allouer les ressources au bon moment. Ce principe rejoint directement les objectifs du slice eMBB dans NexSlice (source 8).
-
-### 7. Apprentissage automatique et prédiction de la QoE
-
-Des travaux s'appuyant sur le Machine Learning montrent qu'il est possible de prédire la QoE vidéo à partir de paramètres mesurés en temps réel (débit, gigue, rebuffering, pertes). Ces approches ouvrent la voie à une orchestration proactive du slicing, capable d'anticiper les besoins de qualité. Elles sont transférables au fonctionnement de NexSlice (source 4).
-
-### 8. Synthèse et positionnement
-
-L'ensemble des recherches met en évidence plusieurs tendances fortes :
-
-- L'utilisation croissante d'environnements virtualisés (OAI, UEs logiciels) pour tester des flux vidéo réalistes
-- La nécessité de combiner mesures réseau (QoS) et qualité perçue (QoE)
-- L'intérêt d'utiliser de vrais pipelines vidéo (VLC, GStreamer) pour reproduire fidèlement les comportements clients
-- Le développement d'approches de slicing orientées QoE, parfois couplées au Machine Learning
-
-Le projet NexSlice s'inscrit pleinement dans cette dynamique. En intégrant un trafic vidéo applicatif dans une infrastructure OAI virtualisée, il permet d'étudier précisément comment le slicing influence la performance et la qualité perçue. Cela constitue une avancée importante vers une évaluation plus réaliste et automatisée des services eMBB.
+**Prometheus + Grafana** [5] est la stack de monitoring standard dans les environnements cloud-native:
+- **Prometheus**: Base de données de séries temporelles pour métriques
+- **Grafana**: Visualisation et dashboards interactifs
+- **Pushgateway**: Collecte de métriques depuis scripts batch
+- **Alertmanager**: Gestion des alertes et notifications
 
 ---
 
@@ -241,7 +234,8 @@ Nous avons suivi une approche en 3 phases (seules les 2 premières ont été com
 3. Capture réseau (tcpdump) [optionnel avec monitoring]
 4. Export automatique des métriques vers Prometheus
 5. Visualisation temps réel dans Grafana
-6. Analyse des résultats
+6. Configuration d'alertes sur métriques critiques
+7. Analyse des résultats
 
 #### Phase 3: Tests Multi-Slices (Non Réalisée)
 *Prévu mais non implémenté - voir section Perspectives*
@@ -260,7 +254,28 @@ Nous avons suivi une approche en 3 phases (seules les 2 premières ont été com
 | | Packets RX/TX | `ip -s link` | Prometheus |
 | **Analyse** | Capture de paquets | `tcpdump` | Fichiers .pcap |
 
+### Métriques Prometheus Exportées
+```promql
+# Latence
+nexslice_rtt_min_ms{ue_ip="12.1.1.2", slice_type="embb"}
+nexslice_rtt_avg_ms{ue_ip="12.1.1.2", slice_type="embb"}
+nexslice_rtt_max_ms{ue_ip="12.1.1.2", slice_type="embb"}
 
+# Jitter et perte
+nexslice_jitter_ms{ue_ip="12.1.1.2", slice_type="embb"}
+nexslice_packet_loss_percent{ue_ip="12.1.1.2", slice_type="embb"}
+
+# Débit
+nexslice_throughput_mbps{ue_ip="12.1.1.2", slice_type="embb"}
+nexslice_download_time_seconds{ue_ip="12.1.1.2", slice_type="embb"}
+
+# Connectivité
+nexslice_ue_connected{ue_ip="12.1.1.2", slice_type="embb"}
+
+# Interface réseau
+nexslice_interface_rx_bytes{ue_ip="12.1.1.2", interface="uesimtun0"}
+nexslice_interface_tx_bytes{ue_ip="12.1.1.2", interface="uesimtun0"}
+```
 
 ### Fichier Vidéo de Test
 
@@ -341,7 +356,11 @@ Panels disponibles:
 - Perte de Paquets: Pourcentage sur période
 - Jitter: Variation de latence
 
-
+**Alertes configurées**:
+- **HighLatency**: Déclenché si RTT > 50ms pendant 2 minutes
+- **PacketLoss**: Déclenché si perte > 1% pendant 1 minute
+- **LowThroughput**: Déclenché si débit < 10 Mbps pendant 5 minutes
+- **UE_Disconnected**: Déclenché si UE déconnecté pendant 1 minute
 
 ### 4. Capture Réseau (Optionnel)
 
@@ -391,6 +410,8 @@ $ tcpdump -r capture-sst1.pcap -nn | head -10
    - Stack Prometheus + Grafana opérationnelle
    - Export automatique des métriques depuis les scripts
    - Dashboards temps réel pour visualisation
+   - Système d'alertes configuré et fonctionnel
+   - Rétention des données sur 30 jours
 
 ### Limitations Identifiées
 
@@ -416,6 +437,91 @@ $ tcpdump -r capture-sst1.pcap -nn | head -10
 - Exporter les métriques vers un data lake pour analyse ML
 - Tests sur infrastructure 5G réelle (non simulée)
 
+---
+
+## Monitoring
+
+### Stack de Monitoring
+
+Notre projet inclut une stack de monitoring complète basée sur Prometheus et Grafana pour la collecte et la visualisation des métriques réseau en temps réel.
+
+#### Composants
+
+| Service | Port | Rôle | URL |
+|---------|------|------|-----|
+| **Prometheus** | 30090 | Base de données de métriques | http://localhost:30090 |
+| **Pushgateway** | 30091 | Collecte depuis scripts | http://localhost:30091 |
+| **Grafana** | 30300 | Dashboards et alertes | http://localhost:30300 |
+
+#### Installation
+```bash
+# Installer la stack de monitoring
+./scripts/Monitoring/setup-monitoring.sh
+
+# Vérifier le statut
+./scripts/Monitoring/check-monitoring.sh
+```
+
+#### Accès à Grafana
+
+1. Ouvrir http://localhost:30300
+2. **Login**: `admin` / **Password**: `admin`
+3. Aller dans **Dashboards** → **NexSlice - Monitoring 5G**
+
+#### Dashboards Disponibles
+
+**NexSlice - Monitoring 5G Network Slicing**
+- Latence moyenne (RTT) par UE et slice
+- Débit (Throughput) en temps réel
+- Taux de perte de paquets
+- Jitter et variation de latence
+- Statistiques d'interface réseau
+
+#### Requêtes Prometheus Utiles
+```promql
+# Latence moyenne sur 5 minutes
+avg_over_time(nexslice_rtt_avg_ms{ue_ip="12.1.1.2"}[5m])
+
+# Débit maximum observé
+max_over_time(nexslice_throughput_mbps{ue_ip="12.1.1.2"}[5m])
+
+# Perte de paquets totale
+sum(nexslice_packet_loss_percent{slice_type="embb"})
+
+# Vérifier si UE est connecté
+nexslice_ue_connected{ue_ip="12.1.1.2"}
+```
+
+#### Système d'Alertes
+
+Les alertes suivantes sont pré-configurées dans Prometheus :
+
+| Alerte | Condition | Durée | Sévérité |
+|--------|-----------|-------|----------|
+| **HighLatency** | RTT > 50ms | 2 min | Warning |
+| **PacketLoss** | Perte > 1% | 1 min | Critical |
+| **LowThroughput** | Débit < 10 Mbps | 5 min | Warning |
+| **UE_Disconnected** | UE offline | 1 min | Critical |
+
+Pour consulter les alertes actives : http://localhost:30090/alerts
+
+#### Export Manuel de Métriques
+```bash
+# Utiliser le script d'export
+source ./scripts/Monitoring/export-metrics.sh
+
+# Exporter une métrique simple
+export_metric "nexslice_custom_metric" "42.5" "gauge" "/ue_ip/12.1.1.2"
+
+# Exporter depuis un fichier JSON
+export_from_json "results/performance/ping_latest.json" "12.1.1.2" "embb"
+```
+
+#### Nettoyage
+```bash
+# Supprimer la stack de monitoring
+./scripts/Monitoring/cleanup-monitoring.sh
+```
 
 ---
 
@@ -543,6 +649,67 @@ rm -rf results/
 
 ---
 
+## Troubleshooting
+
+### Problème: Interface uesimtun0 non créée
+```bash
+# Vérifier que l'UE UERANSIM est bien lancé
+kubectl get pods -n nexslice | grep ue
+
+# Vérifier les logs
+kubectl logs -n nexslice <ue-pod-name>
+
+# L'UE doit afficher: "Connection setup for PDU session"
+```
+
+### Problème: Pas de connectivité vers UPF
+```bash
+# Vérifier la route
+ip route | grep uesimtun0
+
+# Vérifier que l'UPF est actif
+kubectl get pods -n nexslice | grep upf
+kubectl logs -n nexslice <upf-pod-name>
+```
+
+### Problème: Stack de monitoring non accessible
+```bash
+# Vérifier les pods de monitoring
+kubectl get pods -n monitoring
+
+# Si des pods sont en erreur
+kubectl describe pod -n monitoring <pod-name>
+
+# Réinstaller si nécessaire
+./scripts/Monitoring/cleanup-monitoring.sh
+./scripts/Monitoring/setup-monitoring.sh
+```
+
+### Problème: Métriques non visibles dans Grafana
+```bash
+# Vérifier que Pushgateway a bien reçu les métriques
+curl http://localhost:30091/metrics | grep nexslice
+
+# Vérifier que Prometheus scrape correctement
+curl http://localhost:30090/api/v1/targets | jq
+
+# Forcer un refresh dans Grafana (bouton refresh en haut à droite)
+```
+
+### Problème: Tests échouent
+```bash
+# Vérifier l'état complet du Core 5G
+kubectl get pods -n nexslice
+
+# Tous les pods doivent être "Running"
+# Si des pods sont en erreur, consulter leurs logs
+
+# Relancer la stack de monitoring
+./scripts/Monitoring/check-monitoring.sh
+```
+
+---
+
 ## Structure du Projet
 ```
 Projet_NexSlice_Emulation_traffic-video/
@@ -574,25 +741,25 @@ Projet_NexSlice_Emulation_traffic-video/
 
 ## Références
 
-[1] Agarwal, B. et al. (2023). Analysis of real-time video streaming and throughput performance using the OpenAirInterface stack on multiple UEs. IEEE CSCN.
+[1] 3GPP TS 23.501, "System architecture for the 5G System (5GS)", Release 17, 2022.
 
-[2] Nightingale, J. et al. (2016). QoE-Driven, Energy-Aware Video Adaptation in 5G Networks: The SELFNET Self-Optimisation Use Case.
+[2] 3GPP TS 23.502, "Procedures for the 5G System (5GS)", Release 17, 2022.
 
-[3] Baena, C. et al. (2020). Estimation of Video Streaming KQIs for Radio Access Negotiation in Network Slicing Scenarios.
+[3] A. Ksentini et al., "Toward Enforcing Network Slicing on RAN: Flexibility and Resources Abstraction", IEEE Communications Magazine, 2017.
 
-[4] Tiwari, V. et al. (2022). A QoE Framework for Video Services in 5G Networks with Supervised Machine Learning Approach.
+[4] UERANSIM - Open source 5G UE and RAN simulator, https://github.com/aligungr/UERANSIM
 
-[5] Aston Research Group (2018). 5G-QoE: QoE Modelling for Ultra-HD Video Streaming in 5G Networks.
+[5] Prometheus - Monitoring system and time series database, https://prometheus.io
 
-[6] Drago, I. et al. (2017). Reliable Video Streaming over mmWave with Multi-Connectivity and Network Coding. arXiv.
+[6] Grafana - The open observability platform, https://grafana.com
 
-[7] Pedreño Manresa, J. J. et al. (2021). A Latency-Aware Real-Time Video Surveillance Demo: Network Slicing for Improving Public Safety. OFC / arXiv.
+[7] OpenAirInterface - Open source 5G Core and RAN, https://openairinterface.org
 
-[8] DeSlice Project (2023). An Architecture for QoE-Aware and Isolated RAN Slicing. Sensors.
+[8] X. Foukas et al., "Network Slicing in 5G: Survey and Challenges", IEEE Communications Magazine, 2017.
 
-[9] JSidhu, J. S. et al. (2025). From 5G RAN Queue Dynamics to Playback: A Performance Analysis for QUIC Video Streaming. arXiv.
+[9] J. Ordonez-Lucena et al., "Network Slicing for 5G with SDN/NFV: Concepts, Architectures, and Challenges", IEEE Communications Magazine, 2017.
 
-[10] Kanai, K. et al. (Université Waseda). Methods for Adaptive Video Streaming and Picture Quality Assessment to Improve QoS/QoE Performances.
+[10] CNCF - Cloud Native Computing Foundation, "Prometheus Best Practices", https://prometheus.io/docs/practices/
 
 ---
 Ce projet est développé dans le cadre d'un projet académique à Telecom SudParis.
