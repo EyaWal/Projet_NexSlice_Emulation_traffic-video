@@ -15,9 +15,14 @@ NC='\033[0m'
 
 # Configuration
 UE_INTERFACE="uesimtun0"
-VIDEO_URL="http://video-server.nexslice.svc.cluster.local/BigBuckBunny.mp4"
+# URL du serveur vidéo FFmpeg déployé sur Kubernetes
+VIDEO_URL="http://ffmpeg-server.nexslice.svc.cluster.local:8080/videos/video.mp4"
 OUTPUT_DIR="./results"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# Configuration Prometheus (optionnel)
+PUSHGATEWAY_URL="${PUSHGATEWAY_URL:-http://localhost:30091}"
+MONITORING_ENABLED=false
 
 # Créer le dossier de résultats
 mkdir -p $OUTPUT_DIR
@@ -35,8 +40,31 @@ show_elapsed_time() {
     echo -e "${BLUE}Temps écoulé: ${ELAPSED}s${NC}"
 }
 
+# Fonction pour exporter vers Prometheus
+export_to_prometheus() {
+    if [ "$MONITORING_ENABLED" = true ]; then
+        local metric_name=$1
+        local metric_value=$2
+        local ue_ip=$3
+        
+        curl --silent --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/nexslice_streaming/ue_ip/${ue_ip}/slice_type/embb" <<EOF
+# TYPE ${metric_name} gauge
+${metric_name} ${metric_value}
+EOF
+    fi
+}
+
+# Vérifier si Pushgateway est accessible
+if curl -s "${PUSHGATEWAY_URL}/metrics" > /dev/null 2>&1; then
+    MONITORING_ENABLED=true
+    echo -e "${GREEN}✓ Stack de monitoring détectée${NC}"
+else
+    echo -e "${YELLOW}⚠ Stack de monitoring non disponible (métriques non exportées)${NC}"
+fi
+echo ""
+
 # 1. Vérification interface
-echo "[1/4] Vérification interface 5G..."
+echo "[1/5] Vérification interface 5G..."
 if ! ip link show $UE_INTERFACE &> /dev/null; then
     echo -e "${RED}✗ Interface $UE_INTERFACE non trouvée${NC}"
     echo "Lancez d'abord: ./scripts/test-connectivity.sh"
@@ -50,7 +78,7 @@ echo "  IP du UE: $UE_IP"
 echo ""
 
 # 2. Test de téléchargement avec métriques
-echo "[2/4] Téléchargement vidéo via tunnel 5G..."
+echo "[2/5] Téléchargement vidéo via tunnel 5G..."
 echo "  URL: $VIDEO_URL"
 echo "  Interface: $UE_INTERFACE"
 echo ""
@@ -94,16 +122,55 @@ if [ $DOWNLOAD_STATUS -eq 0 ]; then
     fi
 else
     echo -e "${RED}✗ Échec du téléchargement${NC}"
+    echo ""
+    echo "Vérifications à effectuer:"
+    echo "  1. Le serveur vidéo est-il déployé ?"
+    echo "     kubectl get pods -n nexslice | grep ffmpeg-server"
+    echo ""
+    echo "  2. La vidéo est-elle accessible ?"
+    echo "     kubectl exec -n nexslice ffmpeg-server -- ls -lh /var/www/html/videos/"
+    echo ""
+    echo "  3. Le service est-il actif ?"
+    echo "     kubectl get svc -n nexslice | grep ffmpeg-server"
+    echo ""
     exit 1
 fi
 
 echo ""
 
-# 3. Capture réseau (optionnel - nécessite sudo)
-echo "[3/4] Capture réseau (optionnel)..."
+# 3. Export vers Prometheus (si monitoring actif)
+echo "[3/5] Export des métriques vers Prometheus..."
+if [ "$MONITORING_ENABLED" = true ]; then
+    # Export du temps de téléchargement
+    if [ -n "$TOTAL_TIME" ]; then
+        export_to_prometheus "nexslice_download_time_seconds" "$TOTAL_TIME" "$UE_IP"
+    fi
+    
+    # Export du débit
+    if [ -n "$DEBIT_MBPS" ]; then
+        export_to_prometheus "nexslice_throughput_mbps" "$DEBIT_MBPS" "$UE_IP"
+    fi
+    
+    # Export de la taille téléchargée
+    if [ -n "$TOTAL_BYTES" ]; then
+        SIZE_MB=$(echo "scale=2; $TOTAL_BYTES / 1048576" | bc)
+        export_to_prometheus "nexslice_download_size_mb" "$SIZE_MB" "$UE_IP"
+    fi
+    
+    echo -e "${GREEN}✓ Métriques exportées vers Prometheus${NC}"
+    echo "  Endpoint: ${PUSHGATEWAY_URL}/metrics"
+else
+    echo -e "${YELLOW}⚠ Export ignoré (monitoring non disponible)${NC}"
+fi
+
+echo ""
+
+# 4. Capture réseau (optionnel - nécessite sudo)
+echo "[4/5] Capture réseau (optionnel)..."
 if [ "$EUID" -eq 0 ]; then
     echo "Lancement capture tcpdump pendant 10s..."
-    CAPTURE_FILE="$OUTPUT_DIR/capture_${TIMESTAMP}.pcap"
+    CAPTURE_FILE="$OUTPUT_DIR/captures/capture_${TIMESTAMP}.pcap"
+    mkdir -p "$OUTPUT_DIR/captures"
     
     timeout 10 tcpdump -i $UE_INTERFACE -w "$CAPTURE_FILE" &> /dev/null &
     TCPDUMP_PID=$!
@@ -119,28 +186,32 @@ if [ "$EUID" -eq 0 ]; then
         echo "  Fichier: $CAPTURE_FILE"
     fi
 else
-    echo -e "${YELLOW}⚠ Capture tcpdump nécessite les droits root${NC}"
-    echo "  Relancez avec: sudo ./scripts/test-video-streaming.sh"
+    echo -e "${YELLOW}⚠ Capture tcpdump nécessite les droits root (ignoré)${NC}"
+    echo "  Note: Avec le monitoring Prometheus/Grafana, la capture tcpdump est optionnelle"
 fi
 
 echo ""
 
-# 4. Vérification du routage
-echo "[4/4] Vérification du routage via UPF..."
+# 5. Vérification du routage
+echo "[5/5] Vérification du routage via UPF..."
 
-# Extraction de l'IP destination depuis les logs curl
-DEST_IP=$(grep -oP '\d+\.\d+\.\d+\.\d+' "$CURL_LOG" | head -1 || echo "N/A")
+# Extraction de l'IP destination
+DEST_IP=$(kubectl get svc -n nexslice ffmpeg-server -o jsonpath='{.spec.clusterIP}' 2>/dev/null || echo "N/A")
 
 echo "  IP source (UE): $UE_IP"
-echo "  IP destination: $DEST_IP"
+echo "  IP destination (service): $DEST_IP"
 echo "  Gateway UPF: 12.1.1.1"
 
 # Vérifier la route
-ROUTE=$(ip route get $DEST_IP 2>/dev/null || echo "")
-if echo "$ROUTE" | grep -q "$UE_INTERFACE"; then
-    echo -e "${GREEN}✓ Trafic routé via le tunnel 5G${NC}"
+if [ "$DEST_IP" != "N/A" ]; then
+    ROUTE=$(ip route get $DEST_IP 2>/dev/null || echo "")
+    if echo "$ROUTE" | grep -q "$UE_INTERFACE"; then
+        echo -e "${GREEN}✓ Trafic routé via le tunnel 5G${NC}"
+    else
+        echo -e "${YELLOW}⚠ Route non confirmée via $UE_INTERFACE${NC}"
+    fi
 else
-    echo -e "${YELLOW}⚠ Route non confirmée via $UE_INTERFACE${NC}"
+    echo -e "${YELLOW}⚠ IP destination non récupérable${NC}"
 fi
 
 # Résumé
@@ -158,15 +229,19 @@ echo "  - Métriques curl: $CURL_LOG"
 echo ""
 
 # Recommandations d'analyse
-echo "Pour analyser les résultats:"
+if [ "$MONITORING_ENABLED" = true ]; then
+    echo "Consultation des métriques:"
+    echo "  • Grafana: http://localhost:30300"
+    echo "  • Prometheus: http://localhost:30090"
+    echo ""
+fi
+
+echo "Analyse locale des résultats:"
 echo "  1. Métriques réseau:"
 echo "     cat $CURL_LOG"
 echo ""
 if [ -f "$CAPTURE_FILE" ]; then
-    echo "  2. Analyse capture (nécessite Wireshark):"
-    echo "     wireshark $CAPTURE_FILE"
-    echo ""
-    echo "  3. Statistiques paquets:"
+    echo "  2. Analyse capture (optionnel):"
     echo "     tcpdump -r $CAPTURE_FILE -nn | head -20"
     echo ""
 fi

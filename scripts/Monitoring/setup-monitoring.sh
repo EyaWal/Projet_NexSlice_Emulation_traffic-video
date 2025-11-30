@@ -2,6 +2,7 @@
 
 # Setup Monitoring Stack - Prometheus + Grafana + Pushgateway
 # NexSlice Project - Groupe 4
+# VERSION SIMPLIFIÉE (sans système d'alertes)
 
 set -e
 
@@ -15,6 +16,7 @@ NC='\033[0m'
 
 echo -e "${CYAN}================================================${NC}"
 echo -e "${CYAN}  Installation Stack Monitoring - NexSlice${NC}"
+echo -e "${CYAN}  Prometheus + Grafana + Pushgateway${NC}"
 echo -e "${CYAN}================================================${NC}"
 echo ""
 
@@ -27,7 +29,7 @@ mkdir -p "$MANIFESTS_DIR"
 # ============================================
 # 1. Créer le namespace monitoring
 # ============================================
-echo -e "${BOLD}[1/6] Création du namespace monitoring...${NC}"
+echo -e "${BOLD}[1/5] Création du namespace monitoring...${NC}"
 
 kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
 
@@ -40,9 +42,9 @@ fi
 echo ""
 
 # ============================================
-# 2. Déployer Prometheus
+# 2. Déployer Prometheus (SANS ALERTING)
 # ============================================
-echo -e "${BOLD}[2/6] Déploiement de Prometheus...${NC}"
+echo -e "${BOLD}[2/5] Déploiement de Prometheus...${NC}"
 
 cat > "$MANIFESTS_DIR/prometheus-config.yaml" <<'EOF'
 apiVersion: v1
@@ -58,10 +60,6 @@ data:
       external_labels:
         cluster: 'nexslice'
         project: 'network-slicing-5g'
-
-    # Règles d'alerte
-    rule_files:
-      - /etc/prometheus/alerts.yml
 
     scrape_configs:
       # Métriques Kubernetes
@@ -92,53 +90,12 @@ data:
         static_configs:
           - targets: ['pushgateway:9091']
 
-      # Node exporter
+      # Node exporter (optionnel)
       - job_name: 'node-exporter'
         static_configs:
           - targets: ['localhost:9100']
             labels:
               node: 'nexslice-host'
-
-  alerts.yml: |
-    groups:
-    - name: nexslice_alerts
-      interval: 30s
-      rules:
-      - alert: HighLatency
-        expr: nexslice_rtt_avg_ms > 50
-        for: 2m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Latence élevée sur slice {{ $labels.slice_type }}"
-          description: "RTT moyen: {{ $value }}ms (seuil: 50ms)"
-
-      - alert: PacketLoss
-        expr: nexslice_packet_loss_percent > 1
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Perte de paquets détectée"
-          description: "Perte: {{ $value }}% (seuil: 1%)"
-
-      - alert: LowThroughput
-        expr: nexslice_throughput_mbps < 10
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Débit faible"
-          description: "Débit: {{ $value }} Mbps (seuil: 10 Mbps)"
-
-      - alert: UE_Disconnected
-        expr: nexslice_ue_connected == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "UE déconnecté"
-          description: "Le UE {{ $labels.ue_ip }} est déconnecté du réseau 5G"
 EOF
 
 cat > "$MANIFESTS_DIR/prometheus-deployment.yaml" <<'EOF'
@@ -249,13 +206,13 @@ EOF
 kubectl apply -f "$MANIFESTS_DIR/prometheus-config.yaml"
 kubectl apply -f "$MANIFESTS_DIR/prometheus-deployment.yaml"
 
-echo -e "${GREEN}✓ Prometheus déployé${NC}"
+echo -e "${GREEN}✓ Prometheus déployé (collecte de métriques uniquement)${NC}"
 echo ""
 
 # ============================================
 # 3. Déployer Pushgateway
 # ============================================
-echo -e "${BOLD}[3/6] Déploiement de Pushgateway...${NC}"
+echo -e "${BOLD}[3/5] Déploiement de Pushgateway...${NC}"
 
 cat > "$MANIFESTS_DIR/pushgateway-deployment.yaml" <<'EOF'
 apiVersion: v1
@@ -313,7 +270,7 @@ echo ""
 # ============================================
 # 4. Déployer Grafana
 # ============================================
-echo -e "${BOLD}[4/6] Déploiement de Grafana...${NC}"
+echo -e "${BOLD}[4/5] Déploiement de Grafana...${NC}"
 
 cat > "$MANIFESTS_DIR/grafana-datasource.yaml" <<'EOF'
 apiVersion: v1
@@ -410,7 +367,7 @@ echo ""
 # ============================================
 # 5. Attendre que les pods soient prêts
 # ============================================
-echo -e "${BOLD}[5/6] Attente du démarrage des pods...${NC}"
+echo -e "${BOLD}[5/5] Attente du démarrage des pods...${NC}"
 
 echo -n "Prometheus: "
 kubectl wait --for=condition=ready pod -l app=prometheus -n monitoring --timeout=120s
@@ -423,10 +380,8 @@ echo -e "${GREEN}✓ Tous les pods sont prêts${NC}"
 echo ""
 
 # ============================================
-# 6. Créer le dashboard Grafana
+# Créer le dashboard Grafana (exemple)
 # ============================================
-echo -e "${BOLD}[6/6] Configuration du dashboard Grafana...${NC}"
-
 cat > "$MANIFESTS_DIR/grafana-dashboard-nexslice.json" <<'EOF'
 {
   "dashboard": {
@@ -501,9 +456,6 @@ cat > "$MANIFESTS_DIR/grafana-dashboard-nexslice.json" <<'EOF'
 }
 EOF
 
-echo -e "${GREEN}✓ Dashboard Grafana configuré${NC}"
-echo ""
-
 # ============================================
 # Résumé
 # ============================================
@@ -519,6 +471,15 @@ echo ""
 echo -e "${BOLD}Identifiants Grafana:${NC}"
 echo -e "  • Username: ${YELLOW}admin${NC}"
 echo -e "  • Password: ${YELLOW}admin${NC}"
+echo ""
+echo -e "${BOLD}Fonctionnalités installées:${NC}"
+echo "  ✓ Collecte de métriques (Prometheus)"
+echo "  ✓ Export depuis scripts (Pushgateway)"
+echo "  ✓ Visualisation temps réel (Grafana)"
+echo "  ✓ Rétention des données: 30 jours"
+echo ""
+echo -e "${YELLOW}Note: Système d'alertes non configuré${NC}"
+echo -e "${YELLOW}      Consultez manuellement Grafana pour surveiller les métriques${NC}"
 echo ""
 echo -e "${BOLD}Prochaines étapes:${NC}"
 echo "  1. Ouvrir Grafana: http://localhost:30300"

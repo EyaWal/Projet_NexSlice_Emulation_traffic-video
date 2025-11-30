@@ -712,18 +712,17 @@ sum(nexslice_packet_loss_percent{slice_type="embb"})
 nexslice_ue_connected{ue_ip="12.1.1.2"}
 ```
 
-### Système d'Alertes
+### Consultation des Métriques en Temps Réel
 
-Les alertes suivantes sont pré-configurées:
+**Via Prometheus** :
+- URL : http://localhost:30090
+- Utilisez les requêtes PromQL pour interroger les métriques
+- Créez vos propres graphiques
 
-| Alerte | Condition | Durée | Sévérité |
-|--------|-----------|-------|----------|
-| **HighLatency** | RTT > 50ms | 2 min | Warning |
-| **PacketLoss** | Perte > 1% | 1 min | Critical |
-| **LowThroughput** | Débit < 10 Mbps | 5 min | Warning |
-| **UE_Disconnected** | UE offline | 1 min | Critical |
-
-**Consulter les alertes**: http://localhost:30090/alerts
+**Via Grafana** :
+- URL : http://localhost:30300
+- Dashboards pré-configurés
+- Visualisation sur période personnalisable
 
 ### Export Manuel de Métriques
 
