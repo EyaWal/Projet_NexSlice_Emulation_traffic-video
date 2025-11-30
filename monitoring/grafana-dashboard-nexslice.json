@@ -1,0 +1,48 @@
+{
+    "title": "NexSlice - Monitoring 5G eMBB",
+    "tags": ["nexslice", "5g", "embb"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Latence moyenne (RTT)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "nexslice_rtt_avg_ms",
+            "legendFormat": "{{ue_ip}} ({{slice_type}})"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+      },
+      {
+        "id": 2,
+        "title": "Débit (Throughput)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "nexslice_throughput_mbps",
+            "legendFormat": "{{ue_ip}} ({{slice_type}})"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+      },
+      {
+        "id": 3,
+        "title": "Perte de paquets (%)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "nexslice_packet_loss_percent",
+            "legendFormat": "{{ue_ip}}"
+          }
+        ],
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 }
+      }
+    ],
+    "time": { "from": "now-15m", "to": "now" },
+    "refresh": "5s",
+    "schemaVersion": 39,
+    "version": 1
+  }
+  
