@@ -527,42 +527,14 @@ export_from_json "results/performance/ping_latest.json" "12.1.1.2" "embb"
 
 ## Reproduction de l'Expérimentation
 
-### Prérequis
 
-**Matériel**:
-- CPU: 4 cœurs minimum (8 recommandé)
-- RAM: 8 GB minimum (16 GB recommandé)
-- Stockage: 20 GB disponibles
-- OS: Ubuntu 20.04/22.04 LTS
+### 1. Prérequis — Infrastructure du professeur  
+Avant toute chose, il est nécessaire que l'infrastructure 5G de base (fournie par le TP du professeur via NexSlice) soit déployée. Vérifiez que :
 
-**Logiciels**:
 ```bash
-# Mise à jour système
-sudo apt update && sudo apt upgrade -y
-
-# Outils de base
-sudo apt install -y git curl iputils-ping jq bc
-
-# Outils optionnels (pour captures réseau)
-sudo apt install -y tcpdump iperf3
-```
-
-### Installation
-
-#### 1. Récupérer l'Infrastructure NexSlice
-```bash
-# Clone le repo du professeur
-git clone https://github.com/AIDY-F2N/NexSlice.git
-cd NexSlice
-git checkout k3s
-
-# Suivre les instructions du README pour déployer:
-# - Core 5G OAI sur k3s
-# - gNB UERANSIM
-# - UE UERANSIM
-```
-
-#### 2. Clone Notre Projet
+kubectl get pods -n nexslice
+``` 
+### 2. Clone Notre Projet
 ```bash
 # Clone ce repo
 git clone https://github.com/EyaWal/Projet_NexSlice_Emulation_traffic-video.git
@@ -572,64 +544,83 @@ cd Projet_NexSlice_Emulation_traffic-video
 chmod +x scripts/*.sh
 chmod +x scripts/Monitoring/*.sh
 ```
+### 3. Déployer le serveur vidéo (obligatoire)
 
-#### 3. Installer la Stack de Monitoring
+Le dépôt contient un manifeste Kubernetes déjà configuré déployez-le :
 ```bash
-# Installation automatique
-./scripts/Monitoring/setup-monitoring.sh
-
-# Vérification
-./scripts/Monitoring/check-monitoring.sh
+kubectl apply -f configs/kubernetes/video-server.yaml -n nexslice
 ```
-
-**Résultat attendu**:
-```
-Namespace monitoring existe
-prometheus est actif
-pushgateway est actif
-grafana est actif
-
-URLs des services:
-  Prometheus:  http://localhost:30090
-  Pushgateway: http://localhost:30091
-  Grafana:     http://localhost:30300
-```
-
-### Exécution des Tests
-
-#### Option A: Suite Complète (Recommandé)
+Vérifiez que le serveur tourne :
 ```bash
-# Lance tous les tests avec export automatique des métriques
+kubectl get pods -n nexslice | grep video-server
+kubectl exec -n nexslice deploy/video-server -- ls /usr/share/nginx/html
+```
+Vous devez obtenir :
+```CSS
+video-server-xxxxx   1/1   Running
+```
+La vidéo video.mp4 doit être présente.
+
+
+### 4. Installer les outils nécessaires (machine locale / VM)
+Les scripts utilisent ping, curl, jq et bc :
+```bash
+sudo apt update
+sudo apt install -y iputils-ping curl jq bc
+
+```
+### 5. Installer la stack Monitoring
+Pour visualiser les métriques via Prometheus + Grafana :
+```bash
+./scripts/monitoring/setup-monitoring.sh
+./scripts/monitoring/check-monitoring.sh
+```
+Si tout est OK, vous verrez :
+
+Prometheus → http://localhost:30090
+
+Pushgateway → http://localhost:30091
+
+Grafana → http://localhost:30300
+
+À ce stade, les dashboards sont vides : aucune métrique tant que les scripts ne sont pas exécutés.
+
+### 6. Exécuter les scripts de test
+#### 1. Test de connectivité
+```bash
+./scripts/test-connectivity.sh
+```
+Vérifie l’interface 5G (uesimtun0) et la communication avec l’UPF. 
+#### 2. Test de streaming vidéo
+```bash
+sudo ./scripts/test-video-streaming.sh
+```
+→ Télécharge la vidéo test via le tunnel 5G.
+→ Stocke les résultats dans results/.
+#### 3. Mesures de performance (latence, jitter, stats interface)
+```bash
+./scripts/measure-performance.sh
+```
+→ Stocke les métriques dans :
+results/performance/.
+#### 4. Collecte métriques pour le rapport
+```bash
+./scripts/measure-performance.sh
+```
+→ Génère un fichier résumé très utile pour le rapport académique.
+####  Alternative : tout lancer automatiquement
+```bash
 sudo ./scripts/run-all-tests.sh
 ```
 
-Ce script exécute:
-1. Vérification de la stack de monitoring
-2. Test de connectivité 5G
-3. Test de streaming vidéo
-4. Mesures de performance réseau
-5. Export automatique vers Prometheus
-6. Génération du rapport final
 
-#### Option B: Tests Individuels
-```bash
-# 1. Test de connectivité
-./scripts/test-connectivity.sh
+### 7. Visualiser les métriques (Grafana + Prometheus)
 
-# 2. Test de streaming vidéo
-sudo ./scripts/test-video-streaming.sh
-
-# 3. Mesures de performance avec export vers Prometheus
-./scripts/measure-performance.sh
-```
-
-### Analyse des Résultats
-
-#### Via Grafana (Recommandé)
+Maintenant que les scripts ont alimenté le Pushgateway :
 
 1. Ouvrir http://localhost:30300
 2. Login : `admin` / `admin`
-3. Aller dans **Dashboards** → **NexSlice - Monitoring 5G**
+3. Aller dans **Dashboards** 
 4. Observer les métriques en temps réel
 
 #### Via Fichiers Locaux
@@ -637,47 +628,24 @@ sudo ./scripts/test-video-streaming.sh
 Tous les résultats sont également sauvegardés dans `results/`:
 ```bash
 results/
-├── RAPPORT_FINAL_YYYYMMDD_HHMMSS.md
-├── test_run_YYYYMMDD_HHMMSS.log
+├── video_<timestamp>.mp4
+├── curl_metrics_<timestamp>.txt
 ├── performance/
-│   ├── ping_YYYYMMDD_HHMMSS.json
-│   ├── ping_YYYYMMDD_HHMMSS.txt
-│   └── interface_stats_YYYYMMDD_HHMMSS.txt
-├── video_YYYYMMDD_HHMMSS.mp4
-└── curl_metrics_YYYYMMDD_HHMMSS.txt
+│   ├── ping_<timestamp>.txt
+│   ├── interface_stats_<timestamp>.txt
+│   └── rapport_performance_<timestamp>.md
+└── metrics_results.txt (si collect-metrics.sh)
 ```
-
-**Visualiser le rapport final**:
+### 8. Nettoyage (optionnel)
+Supprimer la stack monitoring :
 ```bash
-cat results/RAPPORT_FINAL_*.md
+./scripts/monitoring/cleanup-monitoring.sh
 ```
-
-#### Via Prometheus API
+Supprimer les anciens résultats :
 ```bash
-# Récupérer la latence moyenne actuelle
-curl -s 'http://localhost:30090/api/v1/query?query=nexslice_rtt_avg_ms{ue_ip="12.1.1.2"}' | jq
-
-# Récupérer l'historique des 24 dernières heures
-curl -G http://localhost:30090/api/v1/query_range \
-  --data-urlencode 'query=nexslice_rtt_avg_ms{ue_ip="12.1.1.2"}' \
-  --data-urlencode 'start=2025-11-28T00:00:00Z' \
-  --data-urlencode 'end=2025-11-29T00:00:00Z' \
-  --data-urlencode 'step=15s' | jq > metrics_24h.json
+rm -rf results/
 ```
 
-### Monitoring Continu
-
-Pour surveiller en continu votre infrastructure 5G:
-```bash
-# Option 1: Avec watch (toutes les 5 minutes)
-watch -n 300 './scripts/measure-performance.sh'
-
-# Option 2: Avec cron (automatique)
-crontab -e
-# Ajouter: */5 * * * * /path/to/scripts/measure-performance.sh
-```
-
-Les métriques seront automatiquement exportées vers Prometheus et visibles dans Grafana.
 
 ---
 
@@ -794,15 +762,6 @@ Projet_NexSlice_Emulation_traffic-video/
 [10] CNCF - Cloud Native Computing Foundation, "Prometheus Best Practices", https://prometheus.io/docs/practices/
 
 ---
-
-## Contact
-
-- **Repository**: https://github.com/EyaWal/Projet_NexSlice_Emulation_traffic-video
-- **Email**: eya.walha@telecom-sudparis.eu
-- **Infrastructure de base**: [NexSlice par AIDY-F2N](https://github.com/AIDY-F2N/NexSlice/tree/k3s)
-
----
-
 Ce projet est développé dans le cadre d'un projet académique à Telecom SudParis.
 
 ---
