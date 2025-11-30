@@ -456,10 +456,10 @@ Notre projet inclut une stack de monitoring complète basée sur Prometheus et G
 #### Installation
 ```bash
 # Installer la stack de monitoring
-./scripts/monitoring/setup-monitoring.sh
+./scripts/Monitoring/setup-monitoring.sh
 
 # Vérifier le statut
-./scripts/monitoring/check-monitoring.sh
+./scripts/Monitoring/check-monitoring.sh
 ```
 
 #### Accès à Grafana
@@ -508,7 +508,7 @@ Pour consulter les alertes actives : http://localhost:30090/alerts
 #### Export Manuel de Métriques
 ```bash
 # Utiliser le script d'export
-source ./scripts/monitoring/export-metrics.sh
+source ./scripts/Monitoring/export-metrics.sh
 
 # Exporter une métrique simple
 export_metric "nexslice_custom_metric" "42.5" "gauge" "/ue_ip/12.1.1.2"
@@ -520,7 +520,7 @@ export_from_json "results/performance/ping_latest.json" "12.1.1.2" "embb"
 #### Nettoyage
 ```bash
 # Supprimer la stack de monitoring
-./scripts/monitoring/cleanup-monitoring.sh
+./scripts/Monitoring/cleanup-monitoring.sh
 ```
 
 ---
@@ -713,8 +713,8 @@ kubectl get pods -n monitoring
 kubectl describe pod -n monitoring <pod-name>
 
 # Réinstaller si nécessaire
-./scripts/monitoring/cleanup-monitoring.sh
-./scripts/monitoring/setup-monitoring.sh
+./scripts/Monitoring/cleanup-monitoring.sh
+./scripts/Monitoring/setup-monitoring.sh
 ```
 
 ### Problème: Métriques non visibles dans Grafana
@@ -737,7 +737,7 @@ kubectl get pods -n nexslice
 # Si des pods sont en erreur, consulter leurs logs
 
 # Relancer la stack de monitoring
-./scripts/monitoring/check-monitoring.sh
+./scripts/Monitoring/check-monitoring.sh
 ```
 
 ---
@@ -751,7 +751,7 @@ Projet_NexSlice_Emulation_traffic-video/
 │   ├── test-video-streaming.sh         # Test streaming vidéo
 │   ├── measure-performance.sh          # Mesures de performance
 │   ├── run-all-tests.sh                # Suite complète de tests
-│   └── monitoring/
+│   └── Monitoring/
 │       ├── setup-monitoring.sh         # Installation Prometheus + Grafana
 │       ├── export-metrics.sh           # Export métriques vers Prometheus
 │       ├── check-monitoring.sh         # Vérification stack monitoring
