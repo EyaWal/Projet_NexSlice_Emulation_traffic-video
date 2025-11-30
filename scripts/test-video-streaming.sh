@@ -15,7 +15,7 @@ NC='\033[0m'
 
 # Configuration
 UE_INTERFACE="uesimtun0"
-VIDEO_URL="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+VIDEO_URL="http://video-server.nexslice.svc.cluster.local/BigBuckBunny.mp4"
 OUTPUT_DIR="./results"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
