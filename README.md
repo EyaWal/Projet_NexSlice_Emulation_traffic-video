@@ -424,7 +424,7 @@ Avant toute chose, il est nécessaire que l'infrastructure 5G de base (fournie p
 ```bash
 kubectl get pods -n nexslice
 ``` 
-### 2. Clone Notre Projet
+### 2. Cloner notre Projet
 ```bash
 # Clone ce repo
 git clone https://github.com/EyaWal/Projet_NexSlice_Emulation_traffic-video.git
