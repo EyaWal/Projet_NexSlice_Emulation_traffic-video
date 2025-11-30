@@ -570,16 +570,16 @@ cd Projet_NexSlice_Emulation_traffic-video
 
 # Rendre les scripts exécutables
 chmod +x scripts/*.sh
-chmod +x scripts/monitoring/*.sh
+chmod +x scripts/Monitoring/*.sh
 ```
 
 #### 3. Installer la Stack de Monitoring
 ```bash
 # Installation automatique
-./scripts/monitoring/setup-monitoring.sh
+./scripts/Monitoring/setup-monitoring.sh
 
 # Vérification
-./scripts/monitoring/check-monitoring.sh
+./scripts/Monitoring/check-monitoring.sh
 ```
 
 **Résultat attendu**:
