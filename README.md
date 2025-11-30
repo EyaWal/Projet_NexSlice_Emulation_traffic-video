@@ -17,7 +17,6 @@
 - [Résultats](#résultats)
 - [Conclusion](#conclusion)
 - [Reproduction](#reproduction-de-lexperimentation)
-- [Monitoring](#monitoring)
 - [Références](#références)
 
 ---
