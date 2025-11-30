@@ -1,29 +1,26 @@
 #!/bin/bash
 
-# Nettoyage de la stack de monitoring
-# NexSlice Project
+# Nettoyage de la stack monitoring - NexSlice
 
-# Couleurs
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
 NC='\033[0m'
 
-echo -e "${YELLOW}⚠️  Suppression de la stack de monitoring...${NC}"
+echo -e "${YELLOW}Suppression de la stack de monitoring...${NC}"
 echo ""
 
-read -p "Êtes-vous sûr de vouloir supprimer Prometheus, Grafana et Pushgateway? (y/N) " -n 1 -r
-echo
+# Supprimer tous les déploiements
+kubectl delete namespace monitoring --ignore-not-found
 
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Annulé."
-    exit 0
+# Supprimer le dossier local
+if [ -d "./monitoring" ]; then
+    rm -rf ./monitoring
+    echo -e "${GREEN}✓ Dossier monitoring/ supprimé${NC}"
 fi
 
-echo "Suppression en cours..."
-
-kubectl delete namespace monitoring --ignore-not-found=true
-
 echo ""
-echo -e "${RED}✓ Stack de monitoring supprimée${NC}"
+echo -e "${GREEN}✓ Stack de monitoring supprimée${NC}"
+echo ""
 
 exit 0
