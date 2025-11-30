@@ -8,21 +8,24 @@ Ce guide vous explique comment utiliser les scripts de test fournis pour valider
 
 ## Scripts Disponibles
 
-| Script | Rôle | Durée | Privilèges |
-|--------|------|-------|------------|
-| `test-connectivity.sh` | Test connectivité 5G de base | ~30s | Utilisateur |
-| `test-video-streaming.sh` | Test streaming vidéo complet | ~2-5 min | **sudo** |
-| `measure-performance.sh` | Mesures réseau détaillées | ~2 min | Utilisateur |
-| `run-all-tests.sh` | Orchestration complète | ~5-10 min | **sudo** |
+| Script                     | Rôle                                    | Durée      | Privilèges |
+|---------------------------|-----------------------------------------|-----------|------------|
+| `test-connectivity.sh`    | Vérifie la connectivité 5G de base     | ~30 s     | utilisateur |
+| `test-video-streaming.sh` | Teste le téléchargement vidéo via 5G   | ~1–3 min  | **sudo**   |
+| `measure-performance.sh`  | Mesure latence + stats interface       | ~1–2 min  | utilisateur |
+| `run-all-tests.sh`        | Enchaîne les 3 scripts ci-dessus       | ~3–5 min  | **sudo**   |
+| `collect-metrics.sh`      | Récupère des métriques pour le rapport | ~2–3 min  | utilisateur |
+
 
 ### Scripts de Monitoring
 
-| Script | Rôle | Privilèges |
-|--------|------|------------|
-| `monitoring/setup-monitoring.sh` | Installation Prometheus + Grafana | Utilisateur |
-| `monitoring/export-metrics.sh` | Export métriques vers Prometheus | Utilisateur |
-| `monitoring/check-monitoring.sh` | Vérification stack monitoring | Utilisateur |
-| `monitoring/cleanup-monitoring.sh` | Nettoyage monitoring | Utilisateur |
+
+| Script                                  | Rôle                                     | Privilèges |
+|-----------------------------------------|------------------------------------------|------------|
+| `scripts/monitoring/setup-monitoring.sh`   | Déploie Prometheus + Pushgateway + Grafana | utilisateur |
+| `scripts/monitoring/check-monitoring.sh`   | Vérifie que la stack de monitoring tourne  | utilisateur |
+| `scripts/monitoring/cleanup-monitoring.sh` | Supprime le namespace `monitoring` (K8s)   | utilisateur |
+| `scripts/monitoring/export-metrics.sh`     | Fonction shell pour pousser des métriques (usage avancé) | utilisateur |
 
 ---
 
@@ -392,9 +395,8 @@ sudo ./test-video-streaming.sh
 ### Ce qu'il fait
 1. Vérifie l'interface 5G
 2. Télécharge une vidéo (Big Buck Bunny, ~158 MB) via le tunnel
-3. Mesure le débit, temps de téléchargement
-4. Exporte les métriques vers Prometheus (si monitoring actif)
-5. Vérifie le routage via UPF
+3. Sauvegarde :la vidéo dans results/video_<timestamp>.mp4
+               les métriques curl dans results/curl_metrics_<timestamp>.txt
 
 ### Résultat Attendu
 ```
@@ -402,52 +404,28 @@ sudo ./test-video-streaming.sh
   Test Streaming Vidéo via Slice 5G (SST=1)
 ================================================
 
-[1/4] Vérification interface 5G...
-Interface uesimtun0 active
+[1/3] Vérification interface 5G...
+✓ Interface uesimtun0 active
   IP du UE: 12.1.1.2
 
-[2/4] Téléchargement vidéo via tunnel 5G...
-  URL: http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
-  Interface: uesimtun0
-
-=== Métriques de Téléchargement ===
-Temps total: 45.234s
-Temps connexion: 0.123s
-Temps démarrage transfert: 0.456s
-Vitesse download: 3456789 bytes/s
-Taille téléchargée: 158000000 bytes
+[2/3] Téléchargement vidéo...
+Temps total: 43.21s
+Vitesse: 3700000 bytes/s
 Code HTTP: 200
-IP source: 12.1.1.2
-================================
 
-Téléchargement réussi
-Temps écoulé: 45s
-  Taille fichier: 151M
-  Débit moyen: 27.96 Mbps
+✓ Téléchargement réussi
+  Temps: 43s
+  Taille: 151M
 
-[3/4] Export des métriques vers Prometheus...
-Métriques exportées
-  Endpoint: http://localhost:30091/metrics/job/nexslice_test
+[3/3] Vérification...
+  IP source: 12.1.1.2
+  Fichier: results/video_20251130_123456.mp4
+✓ Test terminé
 
-[4/4] Vérification du routage via UPF...
-  IP source (UE): 12.1.1.2
-  Gateway UPF: 12.1.1.1
-Trafic routé via le tunnel 5G
+Résultats dans: results/
+ ``` 
 
-================================================
-Test de streaming terminé avec succès
-Consultez Grafana: http://localhost:30300
-================================================
-```
 
-### Fichiers Générés
-```
-results/
-├── video_20251130_123456.mp4           # Vidéo téléchargée
-└── curl_metrics_20251130_123456.txt    # Métriques curl
-```
-
----
 
 ## Script 3: measure-performance.sh
 
@@ -470,64 +448,27 @@ cd scripts/
 ### Résultat Attendu
 ```
 ================================================
-  Mesures de Performance - Slice eMBB (SST=1)
+  Mesures de Performance - Slice eMBB
 ================================================
 
-[Prérequis] Vérification des outils nécessaires...
-Interface uesimtun0 active (IP: 12.1.1.2)
+✓ Interface uesimtun0 active (IP: 12.1.1.2)
+
+[1/2] Mesure Latence et Jitter...
+Résultats:
+  - Latence moyenne: 2.45 ms
+  - Jitter (mdev): 0.80 ms
+  - Perte: 0%
+
+[2/2] Statistiques Interface...
+✓ Statistiques sauvegardées
 
 ================================================
-[Test 1/3] Mesure Latence et Jitter
+✓ Mesures terminées
 ================================================
-Destination: 12.1.1.1
-Nombre de pings: 100
+Résultats dans: results/performance/
+  - Ping:  results/performance/ping_20251130_123456.txt
+  - Stats: results/performance/interface_stats_20251130_123456.txt
 
-Envoi des paquets ICMP...
-Résultats Latence:
-  - RTT Min:     1.234 ms
-  - RTT Moyen:   2.456 ms
-  - RTT Max:     5.678 ms
-  - Jitter (mdev): 0.789 ms
-  - Perte:       0%
-Fichier sauvegardé: results/performance/ping_20251130_123456.json
-Métriques exportées vers Prometheus
-
-================================================
-[Test 2/3] Mesure Débit (iperf3)
-================================================
-Test iperf3 ignoré (pas de serveur configuré)
-
-Pour activer ce test:
-  1. Sur une machine avec accès réseau, lancez:
-     iperf3 -s
-  2. Relancez ce script et entrez l'IP du serveur
-
-================================================
-[Test 3/3] Statistiques Interface 5G
-================================================
-Test de charge (10s de trafic)...
-Statistiques RX/TX:
-    RX: bytes  packets  errors  dropped  overrun  mcast
-    1234567    8901     0       0        0        0
-    TX: bytes  packets  errors  dropped  carrier  collsns
-    9876543    7890     0       0        0        0
-Fichier sauvegardé: results/performance/interface_stats_20251130_123456.txt
-Métriques exportées vers Prometheus
-
-================================================
-  Génération du Rapport
-================================================
-Rapport généré: results/performance/rapport_performance_20251130_123456.md
-Dashboard Grafana mis à jour: http://localhost:30300
-```
-
-### Fichiers Générés
-```
-results/performance/
-├── ping_20251130_123456.json          # Métriques latence (JSON)
-├── ping_20251130_123456.txt           # Sortie brute ping
-├── interface_stats_20251130_123456.txt # Stats interface
-└── rapport_performance_20251130_123456.md # Rapport complet
 ```
 
 ### Interpréter les Résultats
