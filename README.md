@@ -73,13 +73,10 @@ Notre projet s'appuie sur l'infrastructure **NexSlice** fournie par le professeu
 - Comparaison quantitative entre slices
 - Tests de mobilité ou handover
 
-> **Note**: Le projet initial prévoyait une comparaison multi-slices, mais nous nous sommes concentrés sur une validation approfondie d'un seul slice avec des mesures précises, reproductibles et un monitoring temps réel professionnel.
 
 ---
 
 ## État de l'Art
-
-# État de l'art - Émulation de trafic vidéo en 5G
 
 ### 1. Contexte général
 
