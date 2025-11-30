@@ -26,13 +26,11 @@ Ce guide vous explique comment utiliser les scripts de test fournis pour valider
 
 ---
 
-## Utilisation
+## Prérequis Complets - Checklist
 
-### Prérequis
+Avant de lancer les tests, vérifiez que TOUT est en place dans cet ordre précis:
 
-Avant de lancer les scripts, assurez-vous que:
-
-1. **L'infrastructure NexSlice est déployée**:
+### Étape 1: Infrastructure NexSlice
 ```bash
 # Vérifier que tous les pods du Core 5G sont Running
 kubectl get pods -n nexslice
@@ -43,7 +41,9 @@ kubectl get pods -n nexslice
 # - UE UERANSIM en "Running"
 ```
 
-2. **L'interface tunnel est créée**:
+**Si des pods manquent**: Retournez au README de NexSlice et suivez les instructions de déploiement.
+
+### Étape 2: Interface Tunnel 5G
 ```bash
 # Vérifier que uesimtun0 existe
 ip link show uesimtun0
@@ -52,20 +52,185 @@ ip link show uesimtun0
 # 5: uesimtun0: <POINTOPOINT,MULTICAST,NOARP,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UNKNOWN mode DEFAULT group default qlen 500
 ```
 
-3. **Les outils nécessaires sont installés**:
+**Si l'interface n'existe pas**:
+```bash
+# Vérifier les logs du UE UERANSIM
+kubectl logs -n nexslice <ue-pod-name>
+
+# Rechercher: "Connection setup for PDU session[1] is successful"
+```
+
+### Étape 3: Serveur Vidéo
+
+**Option A: Serveur Externe (Recommandé)**
+```bash
+# Tester l'accès au serveur vidéo par défaut
+curl -I http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+# Résultat attendu:
+# HTTP/1.1 200 OK
+# Content-Type: video/mp4
+# Content-Length: 158008374
+```
+
+**Si le test réussit**: Passez à l'Étape 4. Aucune configuration supplémentaire requise.
+
+**Si le test échoue** (pas d'accès Internet): Déployez un serveur local (Option B ci-dessous).
+
+**Option B: Serveur Local sur Kubernetes**
+```bash
+# Créer le déploiement nginx
+cat > video-server-deployment.yaml << 'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: nexslice
+data:
+  nginx.conf: |
+    server {
+      listen 80;
+      location / {
+        root /usr/share/nginx/html;
+        autoindex on;
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-server
+  namespace: nexslice
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: video-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-server
+  namespace: nexslice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: video-server
+  template:
+    metadata:
+      labels:
+        app: video-server
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
+        - name: video-storage
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      - name: video-storage
+        emptyDir: {}
+EOF
+
+# Déployer le serveur
+kubectl apply -f video-server-deployment.yaml
+
+# Vérifier que le serveur est actif
+kubectl get pods -n nexslice | grep video-server
+# Devrait afficher: video-server-xxxxx   1/1     Running   0          30s
+
+# Télécharger la vidéo de test
+wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+# Copier la vidéo dans le pod
+POD_NAME=$(kubectl get pods -n nexslice -l app=video-server -o jsonpath='{.items[0].metadata.name}')
+kubectl cp BigBuckBunny.mp4 nexslice/$POD_NAME:/usr/share/nginx/html/
+
+# Vérifier que la vidéo est accessible
+kubectl exec -n nexslice $POD_NAME -- ls -lh /usr/share/nginx/html/
+```
+
+**Modifier le script de test**:
+```bash
+# Éditer scripts/test-video-streaming.sh
+nano scripts/test-video-streaming.sh
+
+# Trouver la ligne:
+VIDEO_URL="http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+
+# Remplacer par:
+VIDEO_URL="http://video-server.nexslice.svc.cluster.local/BigBuckBunny.mp4"
+
+# Sauvegarder (Ctrl+O, Entrée, Ctrl+X)
+```
+
+### Étape 4: Outils Nécessaires
 ```bash
 # Installation des dépendances
 sudo apt update
 sudo apt install -y iputils-ping curl jq bc
 ```
 
-4. **La stack de monitoring est déployée** (voir section [Installation du Monitoring](#installation-du-monitoring))
+### Étape 5: Stack de Monitoring
+```bash
+# Installer la stack de monitoring
+./scripts/monitoring/setup-monitoring.sh
+
+# Vérifier l'installation
+./scripts/monitoring/check-monitoring.sh
+```
+
+**Résultat attendu**:
+```
+Namespace monitoring existe
+prometheus est actif
+pushgateway est actif
+grafana est actif
+
+URLs des services:
+  Prometheus:  http://localhost:30090
+  Pushgateway: http://localhost:30091
+  Grafana:     http://localhost:30300
+
+Test de connectivité...
+Prometheus accessible
+Pushgateway accessible
+Grafana accessible
+
+Stack de monitoring opérationnelle
+```
+
+---
+
+## Checklist Finale Avant les Tests
+
+Cochez chaque élément avant de lancer `run-all-tests.sh`:
+
+- [ ] **Infrastructure NexSlice**: Tous les pods Running
+- [ ] **Interface uesimtun0**: Existe et est UP
+- [ ] **Serveur vidéo**: Accessible (curl -I réussit)
+- [ ] **Outils**: ping, curl, jq, bc installés
+- [ ] **Monitoring**: Prometheus, Pushgateway, Grafana actifs
+
+**Si TOUS les éléments sont cochés**: Vous pouvez lancer les tests !
+
+**Si un élément manque**: Retournez à la section correspondante ci-dessus.
 
 ---
 
 ## Installation du Monitoring
 
-### Étape 1: Installer la Stack Prometheus + Grafana
+### Déployer la Stack Prometheus + Grafana
 ```bash
 # Depuis la racine du projet
 ./scripts/monitoring/setup-monitoring.sh
@@ -126,34 +291,12 @@ Prochaines étapes:
   3. Lancer les tests: ./scripts/run-all-tests.sh
 ```
 
-### Étape 2: Vérifier l'Installation
+### Vérifier l'Installation
 ```bash
 ./scripts/monitoring/check-monitoring.sh
 ```
 
-**Résultat attendu**:
-```
-Vérification de la stack de monitoring...
-
-Namespace monitoring existe
-prometheus est actif
-pushgateway est actif
-grafana est actif
-
-URLs des services:
-  Prometheus:  http://localhost:30090
-  Pushgateway: http://localhost:30091
-  Grafana:     http://localhost:30300
-
-Test de connectivité...
-Prometheus accessible
-Pushgateway accessible
-Grafana accessible
-
-Stack de monitoring opérationnelle
-```
-
-### Étape 3: Accéder à Grafana
+### Accéder à Grafana
 
 1. Ouvrir http://localhost:30300
 2. **Login**: `admin` / **Password**: `admin`
@@ -689,6 +832,20 @@ kubectl logs -n nexslice <upf-pod-name>
 kubectl delete pod -n nexslice <ue-pod-name>
 ```
 
+### Erreur: "Failed to download video"
+
+**Cause**: Le serveur vidéo n'est pas accessible.
+
+**Solution**:
+```bash
+# Tester l'accès au serveur vidéo
+curl -I http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+# Si le test échoue:
+# Option 1: Vérifier votre accès Internet
+# Option 2: Déployer un serveur local (voir Étape 3 des Prérequis)
+```
+
 ### Warning: "Stack de monitoring non accessible"
 
 **Cause**: Prometheus, Pushgateway ou Grafana ne sont pas démarrés.
@@ -807,6 +964,40 @@ mkdir -p images/
 
 ---
 
+## Récapitulatif : Ordre d'Exécution Complet
+
+### Phase 1: Déploiement (une seule fois)
+```bash
+# 1. Infrastructure NexSlice (fournie par le prof)
+cd NexSlice && kubectl apply -f ...
+
+# 2. Vérifier l'infrastructure
+kubectl get pods -n nexslice
+
+# 3. Serveur vidéo (Option A: serveur externe par défaut)
+curl -I http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+# 4. Stack de monitoring
+./scripts/monitoring/setup-monitoring.sh
+```
+
+### Phase 2: Tests (répétable)
+```bash
+# Une fois tout déployé, lancer les tests
+sudo ./scripts/run-all-tests.sh
+```
+
+### Phase 3: Analyse
+```bash
+# Consulter Grafana
+firefox http://localhost:30300
+
+# Lire le rapport final
+cat results/RAPPORT_FINAL_*.md
+```
+
+---
+
 ## Nettoyage
 
 ### Supprimer la Stack de Monitoring
@@ -819,8 +1010,8 @@ mkdir -p images/
 # Supprimer tous les résultats
 rm -rf results/
 
-# Ou supprimer seulement les anciennes captures
-find results/ -name "*.pcap" -mtime +7 -delete
+# Ou supprimer seulement les anciens fichiers
+find results/ -name "*.mp4" -mtime +7 -delete
 ```
 
 ---
@@ -829,10 +1020,11 @@ find results/ -name "*.pcap" -mtime +7 -delete
 
 Si vous rencontrez des problèmes:
 
-1. Vérifiez d'abord la section **Dépannage Commun** ci-dessus
-2. Consultez les logs: `cat results/test_run_*.log`
-3. Vérifiez l'infrastructure: `kubectl get pods -n nexslice`
-4. Vérifiez le monitoring: `./scripts/monitoring/check-monitoring.sh`
+1. Vérifiez d'abord la **Checklist Finale** en haut de ce guide
+2. Consultez la section **Dépannage Commun** ci-dessus
+3. Vérifiez les logs: `cat results/test_run_*.log`
+4. Vérifiez l'infrastructure: `kubectl get pods -n nexslice`
+5. Vérifiez le monitoring: `./scripts/monitoring/check-monitoring.sh`
 
 ---
 
