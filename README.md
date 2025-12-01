@@ -16,7 +16,7 @@
 - [Méthodologie](#méthodologie)
 - [Résultats](#résultats)
 - [Conclusion](#conclusion)
-- [Reproduction](#reproduction-de-lexperimentation)
+- [Reproduction](#Déploiement)
 - [Références](#références)
 
 ---
@@ -465,9 +465,7 @@ Ce mode ne passe **pas** par la 5G ni par NexSlice, mais reprend la **même logi
 
 ---
 
-## Reproduction de l'Expérimentation
-
-# Déploiement 
+## Déploiement 
 ### A. Garde une Partie A – Avec NexSlice:
 
 ### 1. Prérequis — Infrastructure du professeur  
