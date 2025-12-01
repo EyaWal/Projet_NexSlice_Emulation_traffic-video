@@ -1,0 +1,14 @@
+===== ifconfig en0 =====
+en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+	options=6460<TSO4,TSO6,CHANNEL_IO,PARTIAL_CSUM,ZEROINVERT_CSUM>
+	ether 68:ca:c4:a6:25:eb
+	inet6 fe80::1057:f0c7:6491:8dfe%en0 prefixlen 64 secured scopeid 0xb 
+	inet 10.42.21.18 netmask 0xfffffff0 broadcast 10.42.21.31
+	nd6 options=201<PERFORMNUD,DAD>
+	media: autoselect
+	status: active
+
+===== netstat -ibn (filtré sur en0) =====
+en0        1500  <Link#11>   68:ca:c4:a6:25:eb   680018     0  657229442   403458     0   79788738     0
+en0        1500  fe80::1057: fe80:b::1057:f0c7   680018     -  657229442   403458     -   79788738     -
+en0        1500  10.42.21.16/2 10.42.21.18       680018     -  657229442   403458     -   79788738     -
