@@ -468,6 +468,8 @@ Ce mode ne passe **pas** par la 5G ni par NexSlice, mais reprend la **même logi
 ---
 
 ## Reproduction de l'Expérimentation
+
+# Déploiement 
 ### A. Garde une Partie A – Avec NexSlice:
 
 ### 1. Prérequis — Infrastructure du professeur  
@@ -486,32 +488,134 @@ cd Projet_NexSlice_Emulation_traffic-video
 chmod +x scripts/*.sh
 chmod +x scripts/Monitoring/*.sh
 ```
-### 3. Déployer le serveur vidéo (obligatoire)
+### 3. Pré-requis dans les pods UERANSIM
 
-Le dépôt contient un manifeste Kubernetes déjà configuré déployez-le :
+Avant d’exécuter des scripts ou faire des tests réseau, installer les utilitaires nécessaires :
+
 ```bash
-kubectl apply -f configs/kubernetes/video-server.yaml -n nexslice
+sudo k3s kubectl exec -it <pod-ue> -n nexslice -- apt update
+sudo k3s kubectl exec -it <pod-ue> -n nexslice -- apt install -y bc
 ```
-Vérifiez que le serveur tourne :
+
+
+### 4. Construction de l’image Docker du serveur vidéo (FFmpeg)
+
+Construire l’image :
+
 ```bash
-kubectl get pods -n nexslice | grep video-server
-kubectl exec -n nexslice deploy/video-server -- ls /usr/share/nginx/html
+sudo docker build -t ffmpeg-server:latest .
 ```
-Vous devez obtenir :
-```CSS
-video-server-xxxxx   1/1   Running
-```
-La vidéo video.mp4 doit être présente.
 
+Vérifier que l’image existe :
 
-### 4. Installer les outils nécessaires (machine locale / VM)
-Les scripts utilisent ping, curl, jq et bc :
 ```bash
-sudo apt update
-sudo apt install -y iputils-ping curl jq bc
-
+sudo docker images | grep ffmpeg-server
 ```
-### 5. Installer la stack Monitoring
+
+Si tu utilises le script d’automatisation :
+
+```bash
+chmod +x build_ffmpeg.sh
+./build_ffmpeg.sh
+```
+
+
+### 5. Vérification du cluster K3s
+
+S’assurer que le cluster est opérationnel :
+
+```bash
+sudo k3s kubectl get nodes
+sudo k3s kubectl get ns
+```
+
+
+### 6. Déploiement du serveur vidéo dans Kubernetes
+
+Déployer :
+
+```bash
+sudo k3s kubectl apply -f ffmpeg-server-deployment.yaml
+```
+
+Vérifier que les pods tournent :
+
+```bash
+sudo k3s kubectl get pods -n nexslice | grep ffmpeg
+```
+
+Consulter les logs :
+
+```bash
+sudo k3s kubectl logs -n nexslice ffmpeg-server -f
+```
+
+
+### 7. Test interne via un pod temporaire
+
+Créer un pod test et vérifier l’accès HTTP :
+
+```bash
+sudo k3s kubectl run test-client --image=ubuntu:22.04 -n nexslice -it --rm -- bash
+```
+
+Dans le pod test :
+
+```bash
+apt-get update && apt-get install -y curl
+curl -I http://ffmpeg-server.nexslice.svc.cluster.local:8080/videos/video.mp4
+```
+
+
+### 8. Configuration d’un UE UERANSIM
+
+Lister les pods UE :
+
+```bash
+sudo k3s kubectl get pods -n nexslice | grep ueransim-ue
+```
+
+Ouvrir un shell dans un UE :
+
+```bash
+sudo k3s kubectl exec -it -n nexslice <pod-ueransim-ue1> -- bash
+```
+
+Dans le pod :
+
+```bash
+apt-get update && apt-get install -y curl
+ip addr show uesimtun0
+```
+
+
+### 9. Émulation d’un flux vidéo depuis un UE
+
+Créer un dossier dans le pod UE :
+
+```bash
+sudo k3s kubectl exec -it <pod-ue> -n nexslice -- mkdir -p /home/ueransim
+```
+
+Copier le script :
+
+```bash
+sudo k3s kubectl cp stream_video.sh nexslice/<pod-ue>:/home/ueransim/stream_video.sh
+```
+
+Rendre le script exécutable :
+
+```bash
+sudo k3s kubectl exec -it <pod-ue> -n nexslice -- chmod +x /home/ueransim/stream_video.sh
+```
+
+Lancer le streaming :
+
+```bash
+sudo k3s kubectl exec -it <pod-ue> -n nexslice -- /home/ueransim/stream_video.sh
+```
+
+### 10. Installer la stack Monitoring
 Pour visualiser les métriques via Prometheus + Grafana :
 ```bash
 ./scripts/monitoring/setup-monitoring.sh
@@ -527,7 +631,7 @@ Grafana → http://localhost:30300
 
 À ce stade, les dashboards sont vides : aucune métrique tant que les scripts ne sont pas exécutés.
 
-### 6. Exécuter les scripts de test
+### 11. Exécuter les scripts de test
 #### 1. Test de connectivité
 ```bash
 ./scripts/test-connectivity.sh
@@ -556,7 +660,7 @@ sudo ./scripts/run-all-tests.sh
 ```
 
 
-### 7. Visualiser les métriques (Grafana + Prometheus)
+### 12. Visualiser les métriques (Grafana + Prometheus)
 
 Maintenant que les scripts ont alimenté le Pushgateway :
 
