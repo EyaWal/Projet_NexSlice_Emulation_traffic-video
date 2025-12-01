@@ -269,92 +269,144 @@ Nous avons suivi une approche en 3 phases (seules les 2 premières ont été com
 
 ## Résultats
 
-### Configuration Testée
-```yaml
-Infrastructure: NexSlice (OAI Core 5G)
-Core Version: OpenAirInterface
-Simulateur: UERANSIM v3.2.6
-Orchestration: k3s Kubernetes
-Namespace: nexslice, monitoring
+## Résultats
 
-Configuration UE:
-  - Interface: uesimtun0
-  - IP: 12.1.1.2
-  - Slice: eMBB (SST=1, SD=1)
-  - Gateway UPF: 12.1.1.1
+### 1. Résultats dans l’infrastructure NexSlice (Core 5G du prof)
 
-Monitoring:
-  - Prometheus: v2.48.0
-  - Grafana: v10.2.2
-  - Pushgateway: v1.6.2
-  - Rétention: 30 jours
-```
+Cette partie s’appuie sur l’infra NexSlice (Core OAI + UERANSIM) fournie dans le TP.  
+Nous avons réalisé plusieurs séries de tests, documentées dans `test Nexslice.pdf`.:contentReference[oaicite:0]{index=0}
 
-### 1. Connectivité 5G
+#### 1.1. Test 1 – Serveur vidéo et routage via le slice eMBB
 
-**Test**: Ping vers UPF (12.1.1.1) - 100 paquets
+Objectif : prouver qu’un flux vidéo HTTP passe bien par le tunnel 5G (interface `uesimtun0`) et donc par l’UPF et le slice eMBB (SST=1).
 
-| Métrique | Valeur Mesurée | Interprétation |
-|----------|----------------|----------------|
-| Latence Min | [À compléter après vos tests] ms | - |
-| Latence Moyenne | [À compléter] ms | Adapté au streaming si <50ms |
-| Latence Max | [À compléter] ms | - |
-| Jitter (mdev) | [À compléter] ms | Bon si <10ms |
-| Perte de paquets | [À compléter] % | Excellent si <1% |
+- Tentatives de serveur vidéo :
+  - **VLC server** : échec (server instable, pas de flux exploitable).
+  - **GStreamer** : échec (problèmes de configuration, non finalisé).
+  - **FFmpeg + nginx** : **succès**.
+- Mise en place :
+  - Déploiement d’un pod `ffmpeg-server` dans le namespace `nexslice` servant un fichier `video.mp4` via HTTP (`/videos/video.mp4`).:contentReference[oaicite:1]{index=1}  
+  - Vérification que la vidéo est bien présente dans le pod (`ls /usr/share/nginx/html`).
+- Vérification du routage 5G :
+  - Lancement de `tcpdump` sur l’interface **`uesimtun0`** du pod UE (UERANSIM).
+  - Téléchargement de la vidéo via :  
+    `curl --interface uesimtun0 http://ffmpeg-server.nexslice.svc.cluster.local:8080/videos/video.mp4`
+  - Observation dans `tcpdump` de paquets IP avec :
+    - IP source = **12.1.1.2** (UE)
+    - IP destination = serveur vidéo
+    - trafic HTTP visible en **aller/retour**.:contentReference[oaicite:2]{index=2}  
 
-**Conclusion**: Connectivité 5G stable et fonctionnelle
+➡ **Conclusion Test 1 :**  
+Le flux vidéo passe bien par le tunnel 5G (`uesimtun0`) et donc par le slice eMBB configuré dans l’UE (SST=1). Le routage via l’UPF est confirmé.
 
-**Visualisation**: Consultez le dashboard Grafana "NexSlice - Monitoring 5G" pour voir l'évolution en temps réel.
+---
 
-### 2. Streaming Vidéo
+#### 1.2. Test 2 – Dockerisation du serveur FFmpeg + script de streaming incrémental
 
-**Test**: Téléchargement HTTP via `curl --interface uesimtun0`
+Objectif : industrialiser le serveur vidéo et commencer à mesurer des métriques côté UE.
 
-| Métrique | Valeur Mesurée |
-|----------|----------------|
-| Temps total | [À compléter] s |
-| Débit moyen | [À compléter] Mbps |
-| Taille fichier | 158 MB |
-| Code HTTP | 200 OK |
+- Création d’une image Docker `ffmpeg-server:latest` :
+  - Dockerfile Ubuntu 22.04 installant `ffmpeg`, `nginx`, `wget`, `curl`.
+  - Téléchargement automatique d’une vidéo (ex. *ElephantsDream.mp4*) vers `/var/www/html/videos/video.mp4`.:contentReference[oaicite:3]{index=3}  
+  - Nginx configuré pour servir `http://…:8080/videos/video.mp4`.
+- Script `build_ffmpeg.sh` :
+  - `docker build …`
+  - `docker save …` puis `k3s ctr image import …` pour rendre l’image disponible dans k3s.
+- Déploiement dans k3s :
+  - `ffmpeg-server-deployment.yaml` (Deployment + Service `ClusterIP` sur le port 8080).
+  - Test depuis un pod client :  
+    `curl -I http://ffmpeg-server.nexslice.svc.cluster.local:8080/videos/video.mp4` → HTTP 200 OK.:contentReference[oaicite:4]{index=4}  
 
-**Preuve du routage 5G**:
-- Interface utilisée: `uesimtun0` (spécifiée via `--interface`)
-- IP source: `12.1.1.2` (IP du UE sur le tunnel 5G)
-- Gateway: `12.1.1.1` (UPF du Core 5G)
-- Logs UPF: Confirment le passage du trafic HTTP
-- Métriques Prometheus: Confirment le trafic via l'interface 5G
-- Capture tcpdump (optionnel): Montre les paquets sur uesimtun0
+- Script UE `stream_video.sh` :
+  - Télécharge la vidéo **par chunks** (ex. 1 Mo) via HTTP.
+  - Mesure à chaque chunk :
+    - **latence** du chunk,
+    - **débit** estimé,
+    - **jitter** (variation de latence entre chunks),
+    - enregistre les valeurs dans un CSV local (`/tmp/video_metrics.csv`).:contentReference[oaicite:5]{index=5}  
+  - Une première version prévoyait l’envoi de ces métriques vers **Pushgateway** (Prometheus), mais cette partie n’a pas été finalisée de manière stable.
 
-**Conclusion**: Streaming vidéo opérationnel via le tunnel 5G
+➡ **Conclusion Test 2 :**  
+- Serveur vidéo dockerisé fonctionnel dans NexSlice.  
+- Script de streaming incrémental fonctionnel côté UE (avec CSV local).  
+- L’export automatique des métriques vers Prometheus n’a pas été stabilisé (problèmes lors des réinstallations de l’infra).
 
-### 3. Analyse Temps Réel (Grafana)
+---
 
-**Dashboard "NexSlice - Monitoring 5G"** disponible à http://localhost:30300
+#### 1.3. Test 3 – Simplification du serveur vidéo + stack de monitoring
 
-Panels disponibles:
-- Latence Moyenne (RTT): Évolution sur les 15 dernières minutes
-- Débit (Throughput): Mbps en temps réel
-- Perte de Paquets: Pourcentage sur période
-- Jitter: Variation de latence
+Objectif : simplifier le déploiement et intégrer Prometheus / Grafana.
 
+- Simplification du manifeste serveur vidéo :
+  - Nouveau fichier `configs/kubernetes/video-server.yaml` :
+    - Pod `ffmpeg-server` (Ubuntu + ffmpeg + nginx + wget) démarrant directement nginx en foreground.:contentReference[oaicite:6]{index=6}  
+    - Service `ClusterIP` exposant le port 8080.
+- Stack de monitoring :
+  - Scripts :
+    - `scripts/monitoring/setup-monitoring.sh`
+    - `scripts/monitoring/check-monitoring.sh`
+  - Déploiement :
+    - Namespace `monitoring`
+    - **Prometheus** (NodePort 30090)
+    - **Pushgateway** (NodePort 30091)
+    - **Grafana** (NodePort 30300)
+  - Vérification : tous les pods `prometheus`, `pushgateway`, `grafana` passent en `Running`.:contentReference[oaicite:7]{index=7}  
 
+- Limitation rencontrée :
+  - Prometheus et Grafana étaient accessibles via navigateur.
+  - Les **targets** apparaissaient dans Prometheus, mais **aucune métrique spécifique UE** (`nexslice_*`) n’était visible.
+  - Le lien entre scripts UE et Pushgateway/Prometheus n’a pas été finalisé avant la fin du projet.:contentReference[oaicite:8]{index=8}  
 
-### 4. Capture Réseau (Optionnel)
+➡ **Conclusion Test 3 :**  
+- La stack de monitoring (Prometheus + Grafana + Pushgateway) se déploie correctement.  
+- En revanche, l’export de métriques personnalisées depuis l’UE vers Prometheus n’a pas abouti : les dashboards ne reflètent que les métriques système de base.
 
-> **Note**: Avec l'introduction du monitoring Prometheus/Grafana, l'analyse tcpdump devient optionnelle et est principalement utilisée pour le debug approfondi.
+---
 
-Exemple d'analyse tcpdump sur uesimtun0:
-```bash
-$ tcpdump -r capture-sst1.pcap -nn | head -10
+### 2. Résultats en mode “standalone” (sans infra NexSlice)
 
-12:34:56.123456 IP 12.1.1.2.45678 > [SERVER_IP].80: Flags [S], seq 123456789
-12:34:56.125234 IP [SERVER_IP].80 > 12.1.1.2.45678: Flags [S.], ack 1
-12:34:56.125456 IP 12.1.1.2.45678 > [SERVER_IP].80: Flags [.], ack 1
-12:34:56.126789 IP 12.1.1.2.45678 > [SERVER_IP].80: HTTP GET /video.mp4
-...
-```
+En fin de projet, l’infrastructure NexSlice n’était plus entièrement opérationnelle chez nous (problèmes de Core / UPF et d’accès à l’UE). Pour conserver une démonstration fonctionnelle, nous avons ajouté un mode **standalone** exécuté sur machine locale (macOS).
 
-**Validation**: Le trafic transite bien par l'interface 5G (uesimtun0) et non par l'interface réseau classique.
+Ce mode ne passe **pas** par la 5G ni par NexSlice, mais reprend la **même logique de scripts** pour :
+
+- tester la connectivité réseau de base,
+- télécharger une vidéo HTTP,
+- mesurer latence / jitter / stats interface.
+
+#### 2.1. Scripts standalone
+
+- `scripts/test-connectivity-standalone.sh`  
+  - Vérifie l’interface locale (ex. `en0`), récupère son IP.  
+  - Teste un ping vers la passerelle par défaut.  
+  - Teste un ping vers un IP externe (`8.8.8.8`) pour vérifier l’accès Internet.
+
+- `scripts/test-video-streaming-standalone.sh`  
+  - Télécharge une vidéo HTTP (BigBuckBunny) via l’interface locale.  
+  - Enregistre :
+    - le fichier vidéo (`results/video_<timestamp>.mp4`)
+    - les métriques `curl` (temps total, vitesse moyenne, code HTTP) dans `results/curl_metrics_<timestamp>.txt`.
+
+- `scripts/measure-performance-standalone.sh`  
+  - Envoie une série de pings vers la passerelle.  
+  - Calcule :
+    - **latence moyenne** (RTT avg),
+    - **jitter** (stddev),
+    - **perte de paquets**.  
+  - Sauvegarde :
+    - la sortie brute de `ping` dans `results/performance/ping_<timestamp>.txt`  
+    - les stats interface (`ifconfig` + `netstat`) dans `results/performance/interface_stats_<timestamp>.txt`.
+
+#### 2.2. Interprétation des résultats standalone
+
+- Ces tests montrent que :
+  - la machine a bien accès à Internet,
+  - la vidéo HTTP est correctement téléchargée,
+  - on peut calculer des métriques réseau de base (RTT, jitter, pertes, débit HTTP) sur **une interface locale**.
+- **Important (académique) :**
+  - les résultats standalone **ne mesurent pas la QoS 5G**,  
+  - ils servent uniquement :
+    - de **démo fonctionnelle** quand l’infra NexSlice n’est pas disponible,  
+    - et de preuve que la chaîne de scripts (connectivité + streaming + mesures) fonctionne, et peut être branchée sur un tunnel 5G dès que l’infra est de nouveau up.
 
 ---
 
@@ -416,7 +468,7 @@ $ tcpdump -r capture-sst1.pcap -nn | head -10
 ---
 
 ## Reproduction de l'Expérimentation
-
+### A. Garde une Partie A – Avec NexSlice:
 
 ### 1. Prérequis — Infrastructure du professeur  
 Avant toute chose, il est nécessaire que l'infrastructure 5G de base (fournie par le TP du professeur via NexSlice) soit déployée. Vérifiez que :
@@ -535,8 +587,35 @@ Supprimer les anciens résultats :
 ```bash
 rm -rf results/
 ```
+### B. Reproduction en mode standalone (sans infra NexSlice)
 
+Ce mode permet de rejouer les scripts même si l’infrastructure NexSlice n’est pas disponible.  
+Les mesures sont faites sur l’interface réseau locale (ex. `en0` sur macOS), sans Core 5G.
 
+1. Cloner le projet
+```bash
+git clone https://github.com/EyaWal/Projet_NexSlice_Emulation_traffic-video.git
+cd Projet_NexSlice_Emulation_traffic-video
+chmod +x scripts/*.sh
+```
+2. Lancer les tests standalone
+```bash
+# Test de connectivité locale
+./scripts/Mode_Standalone/test-connectivity-standalone.sh
+
+# Test de téléchargement vidéo HTTP
+./scripts/Mode_Standalone/test-video-streaming-standalone.sh
+
+# Mesures de latence / jitter / stats interface
+./scripts/Mode_Standalone/measure-performance-standalone.sh
+```
+3. Consulter les résultats
+```bash
+ls scripts/Mode_Standalone/results_Standalone
+ls scripts/Mode_Standalone/results_Standalone/performance/
+```
+Ces résultats ne passent pas par la 5G ni par NexSlice.
+Ils servent uniquement de démonstration de la logique de test (connectivité + streaming + mesures).
 ---
 
 ## Structure du Projet
