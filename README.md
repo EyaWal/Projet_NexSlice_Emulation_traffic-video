@@ -269,14 +269,12 @@ Nous avons suivi une approche en 3 phases (seules les 2 premières ont été com
 
 ## Résultats
 
-## Résultats
-
 ### 1. Résultats dans l’infrastructure NexSlice (Core 5G du prof)
 
 Cette partie s’appuie sur l’infra NexSlice (Core OAI + UERANSIM) fournie dans le TP.  
 Nous avons réalisé plusieurs séries de tests, documentées dans `test Nexslice.pdf`.:contentReference[oaicite:0]{index=0}
 
-#### 1.1. Test 1 – Serveur vidéo et routage via le slice eMBB
+#### 1.1. Serveur vidéo et routage via le slice eMBB
 
 Objectif : prouver qu’un flux vidéo HTTP passe bien par le tunnel 5G (interface `uesimtun0`) et donc par l’UPF et le slice eMBB (SST=1).
 
@@ -301,7 +299,7 @@ Le flux vidéo passe bien par le tunnel 5G (`uesimtun0`) et donc par le slice eM
 
 ---
 
-#### 1.2. Test 2 – Dockerisation du serveur FFmpeg + script de streaming incrémental
+#### 1.2. Dockerisation du serveur FFmpeg + script de streaming incrémental
 
 Objectif : industrialiser le serveur vidéo et commencer à mesurer des métriques côté UE.
 
@@ -326,14 +324,14 @@ Objectif : industrialiser le serveur vidéo et commencer à mesurer des métriqu
     - enregistre les valeurs dans un CSV local (`/tmp/video_metrics.csv`).:contentReference[oaicite:5]{index=5}  
   - Une première version prévoyait l’envoi de ces métriques vers **Pushgateway** (Prometheus), mais cette partie n’a pas été finalisée de manière stable.
 
-➡ **Conclusion Test 2 :**  
+➡ **Conclusion  :**  
 - Serveur vidéo dockerisé fonctionnel dans NexSlice.  
 - Script de streaming incrémental fonctionnel côté UE (avec CSV local).  
 - L’export automatique des métriques vers Prometheus n’a pas été stabilisé (problèmes lors des réinstallations de l’infra).
 
 ---
 
-#### 1.3. Test 3 – Simplification du serveur vidéo + stack de monitoring
+#### 1.3. Simplification du serveur vidéo + stack de monitoring
 
 Objectif : simplifier le déploiement et intégrer Prometheus / Grafana.
 
@@ -357,7 +355,7 @@ Objectif : simplifier le déploiement et intégrer Prometheus / Grafana.
   - Les **targets** apparaissaient dans Prometheus, mais **aucune métrique spécifique UE** (`nexslice_*`) n’était visible.
   - Le lien entre scripts UE et Pushgateway/Prometheus n’a pas été finalisé avant la fin du projet.:contentReference[oaicite:8]{index=8}  
 
-➡ **Conclusion Test 3 :**  
+➡ **Conclusion  :**  
 - La stack de monitoring (Prometheus + Grafana + Pushgateway) se déploie correctement.  
 - En revanche, l’export de métriques personnalisées depuis l’UE vers Prometheus n’a pas abouti : les dashboards ne reflètent que les métriques système de base.
 
